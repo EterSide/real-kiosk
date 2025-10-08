@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 600px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            font-size: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #45a049;
+            transform: scale(1.05);
+        }
+        button:active {
+            transform: scale(0.95);
+        }
+        .log {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: left;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error { color: #ff6b6b; }
+        .success { color: #51cf66; }
+        .info { color: #74c0fc; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔊 TTS 테스트</h1>
+        <p>브라우저의 음성 합성(TTS) 기능을 테스트합니다</p>
+        
+        <button onclick="testTTS()">🎤 한국어 TTS 테스트</button>
+        <button onclick="listVoices()">📋 사용 가능한 음성 목록</button>
+        <button onclick="clearLog()">🗑️ 로그 지우기</button>
+        
+        <div class="log" id="log"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+            logDiv.innerHTML += `<div class="${className}">[${new Date().toLocaleTimeString()}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('로그 초기화됨', 'info');
+        }
+
+        function listVoices() {
+            log('음성 목록 조회 중...', 'info');
+            
+            const synth = window.speechSynthesis;
+            const voices = synth.getVoices();
+            
+            if (voices.length === 0) {
+                log('❌ 음성을 찾을 수 없습니다', 'error');
+                return;
+            }
+            
+            log(`✅ 총 ${voices.length}개의 음성 발견`, 'success');
+            voices.forEach((voice, idx) => {
+                const isKorean = voice.lang.startsWith('ko');
+                log(`${idx + 1}. ${voice.name} (${voice.lang}) ${voice.default ? '⭐ 기본' : ''} ${isKorean ? '🇰🇷' : ''}`, isKorean ? 'success' : 'info');
+            });
+        }
+
+        function testTTS() {
+            log('TTS 테스트 시작...', 'info');
+            
+            const synth = window.speechSynthesis;
+            synth.cancel();
+            
+            const text = '어서오세요 고객님, 주문을 시작하겠습니다.';
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            utterance.lang = 'ko-KR';
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+            
+            const voices = synth.getVoices();
+            const koreanVoice = voices.find(v => v.lang.startsWith('ko'));
+            
+            if (koreanVoice) {
+                utterance.voice = koreanVoice;
+                log(`✅ 한국어 음성 선택: ${koreanVoice.name}`, 'success');
+            } else {
+                log('⚠️ 한국어 음성을 찾을 수 없습니다. 기본 음성 사용', 'error');
+            }
+            
+            utterance.onstart = () => {
+                log('🎵 TTS 재생 시작!', 'success');
+            };
+            
+            utterance.onend = () => {
+                log('✅ TTS 재생 완료', 'success');
+            };
+            
+            utterance.onerror = (e) => {
+                log(`❌ TTS 에러: ${e.error}`, 'error');
+                if (e.error === 'not-allowed') {
+                    log('💡 해결: 사용자 인터랙션이 필요합니다. 버튼을 다시 클릭하세요!', 'info');
+                }
+            };
+            
+            log(`📤 TTS 실행: "${text}"`, 'info');
+            synth.speak(utterance);
+            
+            setTimeout(() => {
+                log(`📊 상태: speaking=${synth.speaking}, pending=${synth.pending}, paused=${synth.paused}`, 'info');
+            }, 100);
+        }
+
+        // 음성 목록 로드
+        if (window.speechSynthesis.onvoiceschanged !== undefined) {
+            window.speechSynthesis.onvoiceschanged = () => {
+                log('음성 목록이 업데이트되었습니다', 'info');
+            };
+        }
+
+        // 초기 로그
+        log('TTS 테스트 페이지 준비 완료', 'success');
+        log('버튼을 클릭하여 테스트를 시작하세요', 'info');
+    </script>
+</body>
+</html>
+
