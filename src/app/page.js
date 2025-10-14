@@ -9,6 +9,7 @@ import { IdleScreen } from '@/components/IdleScreen';
 import { OrderScreen } from '@/components/OrderScreen';
 import { DebugPanel } from '@/components/DebugPanel';
 import { TTSTestButton } from '@/components/TTSTestButton';
+import { PaymentModal } from '@/components/PaymentModal';
 import { KioskState } from '@/lib/stateMachine';
 import { matchMenu, matchOption, detectConfirmation, detectMoreOrder } from '@/services/menuMatcher';
 import { getAvailableProducts, getCategories } from '@/services/api';
@@ -42,12 +43,16 @@ export default function KioskPage() {
   // 주문 완료 팝업 상태
   const [showOrderComplete, setShowOrderComplete] = useState(false);
   const [orderNumber, setOrderNumber] = useState('');
+  
+  // 결제 모달 상태
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // IDLE 상태로 돌아가면 팝업 닫기
   useEffect(() => {
     if (currentState === KioskState.IDLE) {
       console.log('[Page] IDLE 상태 → 팝업 초기화');
       setShowOrderComplete(false);
+      setShowPaymentModal(false);
       setOrderNumber('');
     }
   }, [currentState]);
@@ -249,15 +254,7 @@ export default function KioskPage() {
     loadData();
   }, [setProducts, setCategories]);
 
-  // 결제 상태 처리
-  useEffect(() => {
-    if (currentState === KioskState.PAYMENT) {
-      // 결제 처리 시뮬레이션
-      setTimeout(() => {
-        onPaymentCompleted();
-      }, 2000);
-    }
-  }, [currentState, onPaymentCompleted]);
+  // 결제 상태는 PaymentModal에서 처리하므로 이 useEffect는 제거
 
   // 상품/옵션 선택 핸들러
   const handleProductSelect = useCallback((item) => {
@@ -286,17 +283,33 @@ export default function KioskPage() {
       return;
     }
 
+    // 결제 모달 열기
+    console.log('[Page] 결제 모달 열기');
+    setShowPaymentModal(true);
+  }, [cart]);
+  
+  // 결제 완료 핸들러
+  const handlePaymentComplete = useCallback(() => {
+    console.log('[Page] 결제 완료');
+    
     // 주문번호 생성 (현재 시간 기반)
     const now = new Date();
     const orderNum = `${now.getHours()}${now.getMinutes()}${now.getSeconds()}${Math.floor(Math.random() * 100)}`.padStart(6, '0');
     
     console.log('[Page] 주문번호:', orderNum);
     setOrderNumber(orderNum);
+    setShowPaymentModal(false);
     setShowOrderComplete(true);
     
     // 결제 완료 처리
     onPaymentCompleted();
-  }, [cart, onPaymentCompleted]);
+  }, [onPaymentCompleted]);
+  
+  // 결제 취소 핸들러
+  const handlePaymentCancel = useCallback(() => {
+    console.log('[Page] 결제 취소');
+    setShowPaymentModal(false);
+  }, []);
 
   // 주문 완료 팝업 닫기
   const handleCloseOrderComplete = useCallback(() => {
@@ -371,6 +384,14 @@ export default function KioskPage() {
         onCloseOrderComplete={handleCloseOrderComplete}
       />
       )}
+      
+      {/* 결제 모달 */}
+      <PaymentModal
+        isOpen={showPaymentModal}
+        totalAmount={cart.reduce((sum, item) => sum + item.totalPrice, 0)}
+        onComplete={handlePaymentComplete}
+        onCancel={handlePaymentCancel}
+      />
       
       {/* 디버그 패널 */}
       <DebugPanel
