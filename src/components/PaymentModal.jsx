@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useKioskStore } from '@/store/kioskStore';
+import { t } from '@/lib/translations';
 
 /**
  * 결제 모달 컴포넌트
  * 카드, 현금, 간편결제 옵션 제공
  */
 export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
+  const { language } = useKioskStore();
   const [step, setStep] = useState('select'); // 'select' | 'card-insert' | 'processing' | 'complete'
   const [selectedMethod, setSelectedMethod] = useState(null);
   const [progress, setProgress] = useState(0);
@@ -88,12 +91,12 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
             <div className="px-6 py-6">
               {/* 금액 표시 (작게) */}
               <p className="text-sm text-blue-600 font-medium mb-2">
-                간편한 금액 {totalAmount.toLocaleString()}원
+                {t('easyAmount', language)} {totalAmount.toLocaleString()}{t('won', language)}
               </p>
               
               {/* 제목 */}
               <h2 className="text-2xl font-bold text-gray-900 mb-6">
-                결제 방법을 선택해주세요
+                {t('selectPaymentMethod', language)}
               </h2>
 
               {/* 결제 수단 카드들 */}
@@ -112,7 +115,7 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
                           <path d="M2 10h20" strokeWidth="2"/>
                         </svg>
                       </div>
-                      <span className="text-base font-semibold text-gray-900">카드</span>
+                      <span className="text-base font-semibold text-gray-900">{t('card', language)}</span>
                     </div>
                   </button>
 
@@ -136,7 +139,7 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
                           className="h-8 w-auto object-contain"
                         />
                       </div>
-                      <span className="text-base font-semibold text-gray-900">삼성·애플페이</span>
+                      <span className="text-base font-semibold text-gray-900">{t('samsungApplePay', language)}</span>
                     </div>
                   </button>
                 </div>
@@ -153,8 +156,8 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
                       </svg>
                     </div>
                     <div className="text-left flex-1">
-                      <div className="text-base font-bold text-gray-900">토스페이 간편결제</div>
-                      <div className="text-sm text-gray-500">토스·포인트 사용 가능</div>
+                      <div className="text-base font-bold text-gray-900">{t('tossPaySimple', language)}</div>
+                      <div className="text-sm text-gray-500">{t('tossPointAvailable', language)}</div>
                     </div>
                   </div>
                 </button>
@@ -196,8 +199,8 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
                       </svg>
                     </div>
                     <div className="text-left flex-1">
-                      <div className="text-base font-bold text-gray-900">QR 간편결제</div>
-                      <div className="text-sm text-gray-500">카카오·네이버·차이페이</div>
+                      <div className="text-base font-bold text-gray-900">{t('qrSimplePay', language)}</div>
+                      <div className="text-sm text-gray-500">{t('qrPaymentOptions', language)}</div>
                     </div>
                   </div>
                 </button>
@@ -220,7 +223,7 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
                       </svg>
                     </div>
                     <div className="text-left flex-1">
-                      <div className="text-base font-bold text-gray-900">현금</div>
+                      <div className="text-base font-bold text-gray-900">{t('cash', language)}</div>
                     </div>
                   </div>
                 </button>
@@ -233,7 +236,7 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
         {step === 'card-insert' && (
           <div className="p-8 bg-gradient-to-br from-blue-600 to-blue-800 text-white">
             <h2 className="text-4xl font-bold mb-8 text-center">
-              카드를 넣어주세요
+              {t('insertCard', language)}
             </h2>
             
             <div className="flex flex-col items-center justify-center py-8">
@@ -256,8 +259,8 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
               
               {/* 안내 메시지 */}
               <div className="text-center">
-                <p className="text-2xl font-semibold mb-2">IC칩이 위를 향하도록</p>
-                <p className="text-xl text-blue-200">카드를 끝까지 밀어넣어주세요</p>
+                <p className="text-2xl font-semibold mb-2">{t('insertCardDetail1', language)}</p>
+                <p className="text-xl text-blue-200">{t('insertCardDetail2', language)}</p>
               </div>
 
               {/* 로딩 애니메이션 */}
@@ -281,13 +284,13 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
               </div>
               
               <h2 className="text-4xl font-bold mb-4">
-                {selectedMethod === 'card' && '카드 결제 승인 중...'}
-                {selectedMethod === 'cash' && '현금 결제 처리 중...'}
-                {selectedMethod === 'simple' && '간편결제 승인 중...'}
+                {selectedMethod === 'card' && t('cardApproving', language)}
+                {selectedMethod === 'cash' && t('cashProcessing', language)}
+                {selectedMethod === 'simple' && t('simplePayApproving', language)}
               </h2>
               
               <p className="text-xl text-orange-100">
-                잠시만 기다려주세요
+                {t('pleaseWait', language)}
               </p>
             </div>
 
@@ -320,17 +323,17 @@ export function PaymentModal({ isOpen, totalAmount, onComplete, onCancel }) {
             </div>
 
             <h2 className="text-5xl font-bold mb-4 animate-fade-in">
-              결제 완료!
+              {t('paymentComplete', language)}
             </h2>
             
             <p className="text-2xl text-green-100 mb-6 animate-fade-in-delay">
-              결제가 성공적으로 완료되었습니다
+              {t('paymentSuccess', language)}
             </p>
 
             <div className="bg-white bg-opacity-20 rounded-2xl p-6 backdrop-blur-sm animate-fade-in-delay-2">
               <div className="flex items-center justify-between gap-8">
-                <span className="text-xl font-semibold">결제 금액</span>
-                <span className="text-3xl font-bold">{totalAmount.toLocaleString()}원</span>
+                <span className="text-xl font-semibold">{t('paymentAmount', language)}</span>
+                <span className="text-3xl font-bold">{totalAmount.toLocaleString()}{t('won', language)}</span>
               </div>
             </div>
           </div>

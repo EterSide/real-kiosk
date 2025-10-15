@@ -1,3 +1,6 @@
+import { t, getProductName } from './translations';
+import { getWelcomeMessage, getMoreOrderMessage } from './personalizedMessages';
+
 /**
  * 키오스크 상태 정의
  */
@@ -57,13 +60,16 @@ export const initialState = {
 /**
  * 상태 전환 로직
  */
-export function transition(currentState, action, payload = {}) {
+export function transition(currentState, action, payload = {}, language = 'ko', customerInfo = null) {
   switch (currentState) {
     case KioskState.IDLE:
       if (action === 'CUSTOMER_DETECTED') {
+        // 👤 고객 정보 기반 맞춤 환영 메시지
+        const welcomeMsg = getWelcomeMessage(customerInfo, language);
+        
         return {
           newState: KioskState.GREETING,
-          message: '어서오세요 고객님, 주문을 시작하겠습니다.',
+          message: welcomeMsg,
         };
       }
       break;
@@ -72,7 +78,7 @@ export function transition(currentState, action, payload = {}) {
       if (action === 'TTS_COMPLETED') {
         return {
           newState: KioskState.LISTENING,
-          message: '무엇을 도와드릴까요?',
+          message: t('howCanIHelp', language),
         };
       }
       break;
@@ -94,16 +100,17 @@ export function transition(currentState, action, payload = {}) {
         if (candidates.length === 0) {
           return {
             newState: KioskState.LISTENING,
-            message: '죄송합니다. 찾으시는 메뉴를 찾지 못했습니다. 다시 말씀해 주시겠어요?',
+            message: t('menuNotFound', language),
           };
         }
         
         // 후보가 1개: 확실한 매칭
         if (candidates.length === 1) {
+          const productName = getProductName(candidates[0].product, language);
           return {
             newState: KioskState.PRODUCT_SELECTED,
             selectedProduct: candidates[0].product,
-            message: `${candidates[0].product.name}을(를) 선택하셨습니다.`,
+            message: `${productName}${t('selected', language)}`,
           };
         }
         
@@ -111,7 +118,7 @@ export function transition(currentState, action, payload = {}) {
         return {
           newState: KioskState.ASK_DISAMBIGUATION,
           candidates: candidates,
-          message: generateDisambiguationMessage(candidates),
+          message: generateDisambiguationMessage(candidates, language),
         };
       }
       break;
@@ -125,16 +132,17 @@ export function transition(currentState, action, payload = {}) {
         if (candidates.length === 0) {
           return {
             newState: KioskState.ASK_MORE,
-            message: '죄송합니다. 찾으시는 메뉴를 찾지 못했습니다. 추가 주문 있으세요?',
+            message: t('menuNotFoundAskMore', language),
           };
         }
         
         // 후보가 1개: 확실한 매칭
         if (candidates.length === 1) {
+          const productName = getProductName(candidates[0].product, language);
           return {
             newState: KioskState.PRODUCT_SELECTED,
             selectedProduct: candidates[0].product,
-            message: `${candidates[0].product.name}을(를) 선택하셨습니다.`,
+            message: `${productName}${t('selected', language)}`,
           };
         }
         
@@ -142,7 +150,7 @@ export function transition(currentState, action, payload = {}) {
         return {
           newState: KioskState.ASK_DISAMBIGUATION,
           candidates: candidates,
-          message: generateDisambiguationMessage(candidates),
+          message: generateDisambiguationMessage(candidates, language),
         };
       }
       break;
@@ -150,10 +158,11 @@ export function transition(currentState, action, payload = {}) {
     case KioskState.ASK_DISAMBIGUATION:
       if (action === 'PRODUCT_CLARIFIED') {
         const { product } = payload;
+        const productName = getProductName(product, language);
         return {
           newState: KioskState.PRODUCT_SELECTED,
           selectedProduct: product,
-          message: `${product.name}을(를) 선택하셨습니다.`,
+          message: `${productName}${t('selected', language)}`,
         };
       }
       break;
@@ -167,14 +176,17 @@ export function transition(currentState, action, payload = {}) {
           return {
             newState: KioskState.ASK_OPTIONS,
             pendingOptions: [...product.optionGroups],
-            message: generateOptionMessage(product.optionGroups[0]),
+            message: t('selectOption', language),
           };
         }
         
         // 옵션이 없는 경우 바로 장바구니에 추가
+        // 👤 고객 정보 기반 맞춤 메시지
+        const moreOrderMsg1 = getMoreOrderMessage(customerInfo, language);
+        
         return {
           newState: KioskState.ASK_MORE,
-          message: '추가 주문 있으세요?',
+          message: moreOrderMsg1,
         };
       }
       break;
@@ -188,14 +200,17 @@ export function transition(currentState, action, payload = {}) {
           return {
             newState: KioskState.ASK_OPTIONS,
             pendingOptions: remainingOptions,
-            message: generateOptionMessage(remainingOptions[0]),
+            message: t('selectOption', language),
           };
         }
         
         // 모든 옵션 선택 완료
+        // 👤 고객 정보 기반 맞춤 메시지
+        const moreOrderMsg2 = getMoreOrderMessage(customerInfo, language);
+        
         return {
           newState: KioskState.ASK_MORE,
-          message: '추가 주문 있으세요?',
+          message: moreOrderMsg2,
         };
       }
       break;
@@ -204,13 +219,13 @@ export function transition(currentState, action, payload = {}) {
       if (action === 'MORE_ORDER') {
         return {
           newState: KioskState.LISTENING,
-          message: '네, 말씀해 주세요.',
+          message: t('yesPleaseSpeak', language),
         };
       }
       if (action === 'NO_MORE_ORDER') {
         return {
           newState: KioskState.CONFIRM,
-          message: generateConfirmMessage(payload.cart),
+          message: generateConfirmMessage(payload.cart, language),
         };
       }
       break;
@@ -219,13 +234,13 @@ export function transition(currentState, action, payload = {}) {
       if (action === 'CONFIRMED') {
         return {
           newState: KioskState.PAYMENT,
-          message: '결제를 진행하겠습니다.',
+          message: t('proceedPayment', language),
         };
       }
       if (action === 'CANCELLED') {
         return {
           newState: KioskState.LISTENING,
-          message: '주문을 수정하시겠습니까?',
+          message: t('modifyOrder', language),
         };
       }
       break;
@@ -234,13 +249,13 @@ export function transition(currentState, action, payload = {}) {
       if (action === 'PAYMENT_COMPLETED') {
         return {
           newState: KioskState.COMPLETE,
-          message: '결제가 완료되었습니다. 감사합니다!',
+          message: t('paymentCompleted', language),
         };
       }
       if (action === 'PAYMENT_FAILED') {
         return {
           newState: KioskState.ERROR,
-          message: '결제에 실패했습니다. 다시 시도해 주세요.',
+          message: t('paymentFailed', language),
         };
       }
       break;
@@ -258,7 +273,7 @@ export function transition(currentState, action, payload = {}) {
       if (action === 'RETRY') {
         return {
           newState: KioskState.LISTENING,
-          message: '다시 주문해 주세요.',
+          message: t('pleaseOrderAgain', language),
         };
       }
       break;
@@ -276,60 +291,47 @@ export function transition(currentState, action, payload = {}) {
 /**
  * 명확화 메시지 생성
  */
-function generateDisambiguationMessage(candidates) {
+function generateDisambiguationMessage(candidates, language = 'ko') {
   const menuList = candidates
     .slice(0, 3)
-    .map((c, idx) => `${idx + 1}번 ${c.product.name}`)
+    .map((c, idx) => {
+      const productName = getProductName(c.product, language);
+      return language === 'ko' 
+        ? `${idx + 1}번 ${productName}`
+        : `${idx + 1}. ${productName}`;
+    })
     .join(', ');
   
-  return `다음 중 어떤 메뉴를 원하시나요? ${menuList}`;
-}
-
-/**
- * 옵션 질문 메시지 생성 (팝업 사용 시 간단하게)
- */
-function generateOptionMessage(optionGroup) {
-  console.log('[stateMachine] 옵션 메시지 생성:', optionGroup);
-  
-  if (!optionGroup) {
-    console.error('[stateMachine] ❌ optionGroup이 없습니다!');
-    return '옵션을 선택해 주세요.';
-  }
-  
-  if (!optionGroup.options || optionGroup.options.length === 0) {
-    console.error('[stateMachine] ❌ options가 없습니다!');
-    return '옵션을 선택해 주세요.';
-  }
-  
-  // 팝업에서 모든 옵션을 보여주므로 간단하게
-  const message = '화면에서 원하시는 옵션을 선택해 주세요.';
-  console.log('[stateMachine] ✅ 생성된 메시지:', message);
-  
-  return message;
+  return `${t('whichMenu', language)} ${menuList}`;
 }
 
 /**
  * 주문 확인 메시지 생성
  */
-function generateConfirmMessage(cart) {
+function generateConfirmMessage(cart, language = 'ko') {
   if (cart.length === 0) {
-    return '주문하신 상품이 없습니다.';
+    return t('noOrders', language);
   }
   
   const itemList = cart
     .map(item => {
+      const productName = getProductName(item.product, language);
       const options = item.selectedOptions
         ?.map(opt => opt.name)
         .join(', ');
       return options 
-        ? `${item.product.name} (${options})` 
-        : item.product.name;
+        ? `${productName} (${options})` 
+        : productName;
     })
     .join(', ');
   
   const total = cart.reduce((sum, item) => sum + item.totalPrice, 0);
   
-  return `주문 내역은 ${itemList}입니다. 총 ${total.toLocaleString()}원입니다. 주문하시겠습니까?`;
+  if (language === 'ko') {
+    return `${t('orderDetails', language)} ${itemList}입니다. ${t('totalIs', language)} ${total.toLocaleString()}원${t('orderConfirm', language)}`;
+  } else {
+    return `${t('orderDetails', language)} ${itemList}. ${t('totalIs', language)} ${total.toLocaleString()} ${t('won', language)}${t('orderConfirm', language)}`;
+  }
 }
 
 export default {

@@ -118,12 +118,12 @@ function extractKeywords(text) {
 /**
  * 메뉴 매칭
  */
-export function matchMenu(userInput, products) {
+export function matchMenu(userInput, products, language = 'ko') {
   const text = userInput.trim().toLowerCase();
   const keywords = extractKeywords(text);
   const candidates = [];
 
-  console.log('[MenuMatcher] 매칭 시작:', { userInput, productsCount: products.length });
+  console.log('[MenuMatcher] 매칭 시작:', { userInput, productsCount: products.length, language });
   
   // 유효한 상품만 필터링
   const validProducts = products.filter(p => {
@@ -141,8 +141,15 @@ export function matchMenu(userInput, products) {
   console.log('[MenuMatcher] 유효한 상품:', validProducts.length, '/', products.length);
 
   for (const product of validProducts) {
+    // 언어에 따라 상품명 선택
+    let productName;
+    if (language === 'en' && product.productEngName) {
+      productName = product.productEngName.toLowerCase();
+      console.log('[MenuMatcher] 영어 상품명 사용:', product.productEngName);
+    } else {
+      productName = product.name.toLowerCase();
+    }
 
-    const productName = product.name.toLowerCase();
     const productChosung = getChosung(product.name);
     const inputChosung = getChosung(text);
 
@@ -268,13 +275,18 @@ export function matchOption(userInput, options) {
 /**
  * 긍정/부정 답변 감지
  */
-export function detectConfirmation(userInput) {
+export function detectConfirmation(userInput, language = 'ko') {
   const text = userInput.trim().toLowerCase();
   
-  console.log('[MenuMatcher] 확인 감지:', text);
+  console.log('[MenuMatcher] 확인 감지:', text, '언어:', language);
   
-  const positiveKeywords = ['네', '예', '응', '좋아', '맞아', '그래', '오케이', 'ㅇㅋ', 'ok', '확인'];
-  const negativeKeywords = ['아니', '아뇨', '싫어', '다시', '취소', '안'];
+  const positiveKeywords = language === 'en'
+    ? ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'confirm', 'correct', 'right']
+    : ['네', '예', '응', '좋아', '맞아', '그래', '오케이', 'ㅇㅋ', 'ok', '확인'];
+  
+  const negativeKeywords = language === 'en'
+    ? ['no', 'nope', 'cancel', 'wrong', 'not', 'again']
+    : ['아니', '아뇨', '싫어', '다시', '취소', '안'];
 
   for (const keyword of positiveKeywords) {
     if (text.includes(keyword)) {
@@ -297,16 +309,20 @@ export function detectConfirmation(userInput) {
 /**
  * 추가 주문 의도 감지
  */
-export function detectMoreOrder(userInput) {
+export function detectMoreOrder(userInput, language = 'ko') {
   const text = userInput.trim().toLowerCase();
   
-  console.log('[MenuMatcher] 추가 주문 감지:', text);
+  console.log('[MenuMatcher] 추가 주문 감지:', text, '언어:', language);
   
   // 긍정 키워드 (추가 주문 있음)
-  const moreKeywords = ['추가', '더', '또', '그리고', '네', '예', '응', '있어', '주세요', '주문'];
+  const moreKeywords = language === 'en'
+    ? ['more', 'add', 'another', 'also', 'yes', 'yeah', 'and', 'plus']
+    : ['추가', '더', '또', '그리고', '네', '예', '응', '있어', '주세요', '주문'];
   
   // 부정 키워드 (추가 주문 없음)
-  const noMoreKeywords = ['없어', '없습니다', '됐어', '됐습니다', '끝', '이제', '결제', '아니', '아니요', '괜찮', '안'];
+  const noMoreKeywords = language === 'en'
+    ? ['no', 'nope', 'done', 'finish', 'thats all', "that's all", 'checkout', 'pay', 'nothing']
+    : ['없어', '없습니다', '됐어', '됐습니다', '끝', '이제', '결제', '아니', '아니요', '괜찮', '안'];
 
   for (const keyword of moreKeywords) {
     if (text.includes(keyword)) {

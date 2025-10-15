@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useKioskStore } from '@/store/kioskStore';
+import { t, getProductName } from '@/lib/translations';
 
 /**
  * 단일 옵션 그룹 선택 팝업
@@ -14,6 +16,7 @@ export function SingleOptionModal({
   onSelect,
   onCancel,
 }) {
+  const { language } = useKioskStore();
   const [selectedOption, setSelectedOption] = useState(null);
 
   useEffect(() => {
@@ -33,7 +36,7 @@ export function SingleOptionModal({
 
   const handleSelect = () => {
     if (!selectedOption) {
-      alert('옵션을 선택해주세요!');
+      alert(language === 'ko' ? '옵션을 선택해주세요!' : 'Please select an option!');
       return;
     }
 
@@ -50,13 +53,15 @@ export function SingleOptionModal({
         <div className="bg-orange-500 text-white px-6 py-4 rounded-t-3xl">
           <div className="flex justify-between items-center mb-2">
             <div>
-              <h2 className="text-2xl font-bold">{product.name}</h2>
+              <h2 className="text-2xl font-bold">{getProductName(product, language)}</h2>
               <p className="text-sm opacity-90">
-                {optionGroup.name}을(를) 선택해주세요
+                {language === 'ko' 
+                  ? `${optionGroup.name}을(를) 선택해주세요` 
+                  : `Please select ${optionGroup.name}`}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs opacity-75">진행 상황</p>
+              <p className="text-xs opacity-75">{language === 'ko' ? '진행 상황' : 'Progress'}</p>
               <p className="text-lg font-bold">
                 {currentIndex + 1} / {totalCount}
               </p>
@@ -104,7 +109,7 @@ export function SingleOptionModal({
 
                   {/* 번호 */}
                   <div className="text-base text-gray-500 mb-2 font-semibold">
-                    {index + 1}번
+                    {language === 'ko' ? `${index + 1}번` : `${index + 1}.`}
                   </div>
 
                   {/* 옵션 이름 */}
@@ -115,11 +120,11 @@ export function SingleOptionModal({
                   {/* 가격 */}
                   <div className="text-base font-bold">
                     {isDefault ? (
-                      <span className="text-green-600 text-lg">✓ 기본</span>
+                      <span className="text-green-600 text-lg">✓ {language === 'ko' ? '기본' : 'Default'}</span>
                     ) : option.price === 0 ? (
-                      <span className="text-green-600">추가금 없음</span>
+                      <span className="text-green-600">{language === 'ko' ? '추가금 없음' : 'No extra'}</span>
                     ) : (
-                      <span className="text-orange-600">+{option.price.toLocaleString()}원</span>
+                      <span className="text-orange-600">+{option.price.toLocaleString()}{t('won', language)}</span>
                     )}
                   </div>
                 </button>
@@ -132,19 +137,19 @@ export function SingleOptionModal({
         <div className="border-t-2 border-gray-200 p-6 bg-gray-50 rounded-b-3xl">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="text-sm text-gray-600">선택한 옵션:</p>
+              <p className="text-sm text-gray-600">{language === 'ko' ? '선택한 옵션:' : 'Selected:'}</p>
               <p className="text-lg font-bold text-gray-800">
-                {selectedOption ? selectedOption.name : '없음'}
+                {selectedOption ? selectedOption.name : (language === 'ko' ? '없음' : 'None')}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-600">현재 금액</p>
+              <p className="text-sm text-gray-600">{language === 'ko' ? '현재 금액' : 'Amount'}</p>
               <p className="text-2xl font-bold text-orange-600">
-                {finalPrice.toLocaleString()}원
+                {finalPrice.toLocaleString()}{t('won', language)}
               </p>
               {additionalPrice > 0 && (
                 <p className="text-xs text-gray-500">
-                  (기본 {product.price.toLocaleString()}원 + {additionalPrice.toLocaleString()}원)
+                  ({language === 'ko' ? '기본' : 'Base'} {product.price.toLocaleString()}{t('won', language)} + {additionalPrice.toLocaleString()}{t('won', language)})
                 </p>
               )}
             </div>
@@ -161,7 +166,9 @@ export function SingleOptionModal({
               }
             `}
           >
-            {currentIndex + 1 === totalCount ? '장바구니에 담기' : '다음 옵션 선택'}
+            {currentIndex + 1 === totalCount 
+              ? (language === 'ko' ? '장바구니에 담기' : 'Add to Cart')
+              : (language === 'ko' ? '다음 옵션 선택' : 'Next Option')}
           </button>
         </div>
       </div>

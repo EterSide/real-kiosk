@@ -1,9 +1,13 @@
 'use client';
 
+import { useKioskStore } from '@/store/kioskStore';
+import { t, getProductName } from '@/lib/translations';
+
 /**
  * 상품 카드 컴포넌트
  */
 export function ProductCard({ product, index, onClick, highlighted }) {
+  const { language } = useKioskStore();
   return (
     <button
       onClick={onClick}
@@ -36,17 +40,17 @@ export function ProductCard({ product, index, onClick, highlighted }) {
       {/* 정보 영역 (축소) */}
       <div className="p-2">
         <h3 className="text-xs font-bold text-gray-800 mb-1 line-clamp-2">
-          {product.name}
+          {getProductName(product, language)}
         </h3>
         
         <div className="flex items-center justify-between">
           <p className="text-sm font-bold text-orange-600">
-            {product.price.toLocaleString()}원
+            {product.price.toLocaleString()}{t('won', language)}
           </p>
           
           {product.type === 'SET' && (
             <span className="bg-orange-100 text-orange-800 text-[10px] font-semibold px-1 py-0.5 rounded">
-              세트
+              {language === 'ko' ? '세트' : 'Set'}
             </span>
           )}
         </div>

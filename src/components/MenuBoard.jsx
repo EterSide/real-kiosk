@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { ProductCard } from './ProductCard';
+import { useKioskStore } from '@/store/kioskStore';
+import { t, getCategoryName } from '@/lib/translations';
 
 /**
  * 메뉴판 컴포넌트
@@ -13,6 +15,7 @@ export function MenuBoard({
   pendingOptions,
   onProductSelect,
 }) {
+  const { language } = useKioskStore();
   const [selectedCategory, setSelectedCategory] = useState(null);
 
   console.log('[MenuBoard] 렌더링:', {
@@ -44,10 +47,10 @@ export function MenuBoard({
       <div className="bg-orange-500 text-white px-4 py-2">
         <h2 className="text-xl font-bold">
           {isOptionMode
-            ? `옵션 선택: ${pendingOptions[0].name}`
+            ? `${t('optionSelection', language)}: ${pendingOptions[0].name}`
             : candidates.length > 0
-            ? '선택해 주세요'
-            : '메뉴'}
+            ? t('pleaseSelect', language)
+            : t('menu', language)}
         </h2>
       </div>
 
@@ -62,7 +65,7 @@ export function MenuBoard({
                 : 'bg-white text-gray-700 hover:bg-orange-100'
             }`}
           >
-            전체
+            {t('all', language)}
           </button>
           {categories.map(category => (
             <button
@@ -74,7 +77,7 @@ export function MenuBoard({
                   : 'bg-white text-gray-700 hover:bg-orange-100'
               }`}
             >
-              {category.name}
+              {getCategoryName(category, language)}
             </button>
           ))}
         </div>
@@ -98,7 +101,7 @@ export function MenuBoard({
                   </p>
                   {option.price > 0 && (
                     <p className="text-xs text-orange-600 font-semibold">
-                      +{option.price.toLocaleString()}원
+                      +{option.price.toLocaleString()}{t('won', language)}
                     </p>
                   )}
                 </div>

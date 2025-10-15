@@ -16,7 +16,8 @@ const apiClient = axios.create({
 const transformCategory = (category) => {
   return {
     id: category.id,
-    name: category.categoryName, // 백엔드: categoryName → 프론트: name
+    name: category.categoryName, // 한국어 카테고리명
+    categoryEngName: category.categoryEngName, // 영어 카테고리명
     displayOrder: category.displayOrder,
     createdAt: category.createdAt,
   };
@@ -117,8 +118,10 @@ const transformProduct = (product) => {
     
     return {
       id: product.id,
-      name: product.productName, // 백엔드: productName → 프론트: name
-      description: product.description,
+      name: product.productName, // 한국어 상품명
+      productEngName: product.productEngName, // 영어 상품명
+      description: product.description, // 한국어 설명
+      engDescription: product.engDescription, // 영어 설명
       price: product.price,
       imageUrl: product.imageUrl,
       type: transformedOptionGroups.length > 0 ? 'SET' : 'SINGLE',
@@ -135,7 +138,9 @@ const transformProduct = (product) => {
     return {
       id: product.id,
       name: product.productName || product.name || '상품',
+      productEngName: product.productEngName || null,
       description: product.description || '',
+      engDescription: product.engDescription || null,
       price: product.price || 0,
       imageUrl: product.imageUrl || null,
       type: 'SINGLE',

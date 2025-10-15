@@ -5,6 +5,8 @@ import { SingleOptionModal } from './SingleOptionModal';
 import { CartPanel } from './CartPanel';
 import { OrderCompleteModal } from './OrderCompleteModal';
 import { KioskState } from '@/lib/stateMachine';
+import { useKioskStore } from '@/store/kioskStore';
+import { t } from '@/lib/translations';
 
 /**
  * 주문 화면 컴포넌트
@@ -29,6 +31,8 @@ export function OrderScreen({
   orderNumber,
   onCloseOrderComplete,
 }) {
+  const { language } = useKioskStore();
+  
   console.log('[OrderScreen] 렌더링:', {
     productsCount: products?.length || 0,
     categoriesCount: categories?.length || 0,
@@ -71,7 +75,7 @@ export function OrderScreen({
                   <div className="flex items-center gap-3">
                     <span className="text-2xl animate-pulse">🎤</span>
                     <div className="flex-1">
-                      <p className="text-base text-gray-600">듣고 있습니다...</p>
+                      <p className="text-base text-gray-600">{t('listening', language)}</p>
                       {interimTranscript && (
                         <p className="text-lg font-semibold text-gray-800">{interimTranscript}</p>
                       )}

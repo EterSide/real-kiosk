@@ -4,19 +4,25 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * 음성 인식 훅
  * Web Speech API 사용
  */
-export function useSpeechRecognition(onResult, enabled = false) {
+export function useSpeechRecognition(onResult, enabled = false, language = 'ko') {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const recognitionRef = useRef(null);
   const silenceTimerRef = useRef(null);
   const enabledRef = useRef(enabled); // ref로 관리
+  const languageRef = useRef(language); // ref로 관리
   const isManuallyStoppedRef = useRef(false); // 수동 중지 플래그
   
   // enabled 업데이트
   useEffect(() => {
     enabledRef.current = enabled;
   }, [enabled]);
+  
+  // language 업데이트
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
 
   // 음성 인식 초기화
   useEffect(() => {
@@ -32,8 +38,11 @@ export function useSpeechRecognition(onResult, enabled = false) {
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'ko-KR';
+    // 언어 설정은 start 시점에 동적으로 변경
+    recognition.lang = language === 'en' ? 'en-US' : 'ko-KR';
     recognition.maxAlternatives = 1;
+    
+    console.log('[음성인식] 초기 언어 설정:', recognition.lang);
 
     recognition.onstart = () => {
       console.log('[음성인식] ✅ 시작');
@@ -171,7 +180,13 @@ export function useSpeechRecognition(onResult, enabled = false) {
 
     if (enabled && !isListening) {
       console.log('[음성인식] enabled=true, 시작 시도...');
+      console.log('[음성인식] 언어:', languageRef.current);
       isManuallyStoppedRef.current = false;
+      
+      // 언어 설정 업데이트
+      const langCode = languageRef.current === 'en' ? 'en-US' : 'ko-KR';
+      recognitionRef.current.lang = langCode;
+      console.log('[음성인식] 언어 설정:', langCode);
       
       // 약간의 지연을 두고 시작 (이미 시작된 경우 방지)
       setTimeout(() => {

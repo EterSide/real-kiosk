@@ -25,6 +25,7 @@ export default function KioskPage() {
     pendingOptions,
     lastMessage,
     lastInput,
+    language,
     setProducts,
     setCategories,
     onCustomerDetected,
@@ -57,14 +58,21 @@ export default function KioskPage() {
     }
   }, [currentState]);
 
-  // 고객 감지 콜백 (안정화)
-  const handleCustomerDetected = useCallback(() => {
+  // 고객 감지 콜백 (안정화) - 고객 정보 포함
+  const handleCustomerDetected = useCallback((customerInfo) => {
     console.log('[Page] 고객 감지 콜백 실행');
+    console.log('[Page] 고객 정보:', customerInfo);
+    
+    // 고객 정보를 store에 저장
+    if (customerInfo) {
+      useKioskStore.setState({ customerInfo });
+    }
+    
     onCustomerDetected();
   }, [onCustomerDetected]);
 
   // 웹캠 고객 감지
-  const { videoRef, isDetecting, isLoaded, detectionProgress } = useCustomerDetection(
+  const { videoRef, isDetecting, isLoaded, detectionProgress, customerInfo } = useCustomerDetection(
     handleCustomerDetected,
     currentState === KioskState.IDLE
   );
@@ -84,7 +92,7 @@ export default function KioskPage() {
     if (state === KioskState.LISTENING || state === KioskState.PROCESSING) {
       // 메뉴 매칭
       console.log('[Page] 메뉴 매칭 시작...');
-      const result = matchMenu(transcript, products);
+      const result = matchMenu(transcript, products, language); // 언어 전달
       console.log('[Page] 메뉴 매칭 결과:', result.candidates.length, '개');
       
       onSpeechReceived(transcript); // 상태 업데이트
@@ -93,7 +101,7 @@ export default function KioskPage() {
     else if (state === KioskState.ASK_DISAMBIGUATION) {
       // 후보 중 선택
       console.log('[Page] 후보 중 선택 처리...');
-      const result = matchMenu(transcript, candidates.map(c => c.product));
+      const result = matchMenu(transcript, candidates.map(c => c.product), language); // 언어 전달
       if (result.candidates.length > 0) {
         onSpeechReceived(transcript);
         onProductClarified(result.candidates[0].product);
@@ -113,7 +121,7 @@ export default function KioskPage() {
     else if (state === KioskState.ASK_MORE) {
       // 추가 주문 여부
       console.log('[Page] 추가 주문 여부 처리...');
-      const confirmation = detectMoreOrder(transcript);
+      const confirmation = detectMoreOrder(transcript, language); // 언어 전달
       
       if (confirmation === 'yes') {
         console.log('[Page] ✅ 추가 주문 있음 (명시적)');
@@ -126,7 +134,7 @@ export default function KioskPage() {
       } else {
         // unknown인 경우 → 메뉴 이름으로 간주하고 매칭 시도
         console.log('[Page] 💡 메뉴 이름으로 판단, 매칭 시도...');
-        const result = matchMenu(transcript, products);
+        const result = matchMenu(transcript, products, language); // 언어 전달
         
         if (result.candidates.length > 0) {
           console.log('[Page] ✅ 메뉴 매칭 성공! 바로 메뉴 매칭 처리');
@@ -144,7 +152,7 @@ export default function KioskPage() {
     else if (state === KioskState.CONFIRM) {
       // 주문 확인
       console.log('[Page] 주문 확인 처리...');
-      const confirmation = detectConfirmation(transcript);
+      const confirmation = detectConfirmation(transcript, language); // 언어 전달
       onSpeechReceived(transcript);
       if (confirmation === 'yes') {
         onConfirm(true);
@@ -170,7 +178,8 @@ export default function KioskPage() {
   
   const { interimTranscript, isListening } = useSpeechRecognition(
     handleSpeechResult,
-    shouldListen
+    shouldListen,
+    language // 언어 전달
   );
   
   // 음성 인식 상태 변경 로그 (강화)
@@ -189,10 +198,11 @@ export default function KioskPage() {
     // 메시지가 변경되었고, 이전에 재생하지 않은 메시지일 때만 재생
     if (lastMessage && lastMessage !== lastPlayedMessageRef.current) {
       console.log('[Page] 🔊 새 메시지 재생:', lastMessage);
+      console.log('[Page] 현재 언어:', language);
       lastPlayedMessageRef.current = lastMessage;
-      speak(lastMessage);
+      speak(lastMessage, { language }); // 언어 전달
     }
-  }, [lastMessage, speak]);
+  }, [lastMessage, speak, language]);
   
   // IDLE 상태로 돌아가면 ref 리셋
   useEffect(() => {
@@ -362,6 +372,7 @@ export default function KioskPage() {
           videoRef={videoRef} 
           isDetecting={isDetecting}
           detectionProgress={detectionProgress}
+          customerInfo={customerInfo}
           onManualStart={handleManualStart}
         />
       ) : (

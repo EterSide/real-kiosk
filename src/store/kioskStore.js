@@ -3,11 +3,17 @@ import { initialState, KioskState, transition } from '@/lib/stateMachine';
 
 export const useKioskStore = create((set, get) => ({
   ...initialState,
+  
+  // 언어 설정 (기본값: 한국어)
+  language: 'ko',
+  
+  // 고객 정보 (나이/성별)
+  customerInfo: null,
 
   // 상태 전환
   dispatch: (action, payload = {}) => {
     const state = get();
-    const result = transition(state.currentState, action, payload);
+    const result = transition(state.currentState, action, payload, state.language, state.customerInfo);
     
     console.log(`[상태머신] ${state.currentState} -> ${result.newState}`, { action, message: result.message });
     
@@ -52,6 +58,9 @@ export const useKioskStore = create((set, get) => ({
   // 메뉴 데이터 설정
   setProducts: (products) => set({ products }),
   setCategories: (categories) => set({ categories }),
+  
+  // 언어 설정
+  setLanguage: (language) => set({ language }),
 
   // 고객 감지
   onCustomerDetected: () => {

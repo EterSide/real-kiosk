@@ -1,6 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
+ * 한국어 TTS를 위한 텍스트 전처리
+ * 자연스러운 발음을 위해 띄어쓰기와 쉼표 추가
+ */
+function preprocessKoreanText(text) {
+  // 숫자 + 원 사이에 공백 추가
+  text = text.replace(/(\d+)(원)/g, '$1 $2');
+  
+  // "~입니다"를 "~ 입니다"로 (약간의 쉼)
+  text = text.replace(/([가-힣]+)(입니다|이에요|예요)/g, '$1 $2');
+  
+  // "~하셨습니다"를 "~ 하셨습니다"로
+  text = text.replace(/([가-힣]+)(하셨습니다|하셨어요)/g, '$1 $2');
+  
+  // 감탄사 뒤에 쉼표 추가 (이미 있으면 패스)
+  text = text.replace(/([네넵아예])(\s)(?![,!?])/g, '$1, ');
+  
+  // "~요" 뒤에 약간의 쉼 (문장 중간일 때만)
+  text = text.replace(/([가-힣]+요)\s+([가-힣])/g, '$1, $2');
+  
+  return text;
+}
+
+/**
  * TTS (Text-to-Speech) 훅
  * Web Speech API 사용
  */
@@ -38,32 +61,63 @@ export function useTextToSpeech(onSpeechEnd) {
     }
 
     console.log('[TTS] 🔊 speak 호출:', text);
+    console.log('[TTS] 언어:', options.language || 'ko');
 
     // 현재 재생 중인 것 취소
     synthRef.current.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    // 언어별 설정
+    const language = options.language || 'ko';
+    const langCode = language === 'en' ? 'en-US' : 'ko-KR';
     
-    // 한국어 음성 설정
-    utterance.lang = 'ko-KR';
-    utterance.rate = options.rate || 1.0;
-    utterance.pitch = options.pitch || 1.0;
+    // 한국어일 경우 텍스트 전처리
+    const processedText = language === 'ko' ? preprocessKoreanText(text) : text;
+    
+    if (processedText !== text) {
+      console.log('[TTS] 📝 전처리 후:', processedText);
+    }
+
+    const utterance = new SpeechSynthesisUtterance(processedText);
+    
+    utterance.lang = langCode;
+    // 한국어는 약간 느리게, 영어는 기본 속도
+    utterance.rate = options.rate || (language === 'ko' ? 0.9 : 1.0);
+    // 한국어는 약간 높은 톤으로 (더 친근하게)
+    utterance.pitch = options.pitch || (language === 'ko' ? 1.1 : 1.0);
     utterance.volume = options.volume || 1.0;
 
-    // 한국어 음성 찾기
+    // 해당 언어의 음성 찾기
     const voices = synthRef.current.getVoices();
     console.log('[TTS] 📋 사용 가능한 음성 목록:');
     voices.forEach((voice, idx) => {
       console.log(`  ${idx + 1}. ${voice.name} (${voice.lang}) ${voice.default ? '⭐ 기본' : ''}`);
     });
     
-    const koreanVoice = voices.find(voice => voice.lang.startsWith('ko'));
-    if (koreanVoice) {
-      console.log('[TTS] ✅ 한국어 음성 선택:', koreanVoice.name, '(', koreanVoice.lang, ')');
-      utterance.voice = koreanVoice;
+    // 언어별로 최적의 음성 찾기
+    let selectedVoice;
+    if (language === 'en') {
+      // 영어 음성 우선순위: en-US > en-GB > en-*
+      selectedVoice = voices.find(voice => voice.lang === 'en-US') ||
+                      voices.find(voice => voice.lang === 'en-GB') ||
+                      voices.find(voice => voice.lang.startsWith('en'));
+      
+      if (selectedVoice) {
+        console.log('[TTS] ✅ 영어 음성 선택:', selectedVoice.name, '(', selectedVoice.lang, ')');
+        utterance.voice = selectedVoice;
+      } else {
+        console.warn('[TTS] ⚠️ 영어 음성을 찾을 수 없습니다. 기본 음성 사용');
+      }
     } else {
-      console.warn('[TTS] ⚠️ 한국어 음성을 찾을 수 없습니다. 기본 음성 사용');
-      console.log('[TTS] 💡 시스템 설정에서 한국어 TTS를 설치해주세요');
+      // 한국어 음성
+      selectedVoice = voices.find(voice => voice.lang.startsWith('ko'));
+      
+      if (selectedVoice) {
+        console.log('[TTS] ✅ 한국어 음성 선택:', selectedVoice.name, '(', selectedVoice.lang, ')');
+        utterance.voice = selectedVoice;
+      } else {
+        console.warn('[TTS] ⚠️ 한국어 음성을 찾을 수 없습니다. 기본 음성 사용');
+        console.log('[TTS] 💡 시스템 설정에서 한국어 TTS를 설치해주세요');
+      }
     }
 
     utterance.onstart = () => {

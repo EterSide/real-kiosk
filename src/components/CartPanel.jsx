@@ -1,10 +1,14 @@
 'use client';
 
+import { useKioskStore } from '@/store/kioskStore';
+import { t, getProductName } from '@/lib/translations';
+
 /**
  * 장바구니 패널 컴포넌트
  * 오른쪽에 고정 표시
  */
 export function CartPanel({ cart, onCheckout }) {
+  const { language } = useKioskStore();
   const totalPrice = cart.reduce((sum, item) => sum + item.totalPrice, 0);
   const totalCount = cart.length;
 
@@ -14,10 +18,10 @@ export function CartPanel({ cart, onCheckout }) {
       <div className="bg-orange-500 text-white px-4 py-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-bold flex items-center gap-2">
-            🛒 장바구니
+            🛒 {t('cart', language)}
           </h3>
           <span className="bg-white text-orange-500 px-3 py-1 rounded-full text-sm font-bold">
-            {totalCount}개
+            {totalCount}{t('items', language)}
           </span>
         </div>
       </div>
@@ -27,7 +31,7 @@ export function CartPanel({ cart, onCheckout }) {
         {cart.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-gray-400">
             <span className="text-5xl mb-3">🛒</span>
-            <p className="text-sm">장바구니가 비어있습니다</p>
+            <p className="text-sm">{t('cartEmpty', language)}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -43,8 +47,8 @@ export function CartPanel({ cart, onCheckout }) {
                   </span>
                   <button
                     className="text-gray-400 hover:text-red-500 transition-colors"
-                    onClick={() => console.log('삭제:', item.id)}
-                    title="삭제"
+                    onClick={() => console.log(t('delete', language) + ':', item.id)}
+                    title={t('delete', language)}
                   >
                     <span className="text-lg">×</span>
                   </button>
@@ -53,7 +57,7 @@ export function CartPanel({ cart, onCheckout }) {
                 {/* 상품 이름 */}
                 <div className="mb-2">
                   <h4 className="font-bold text-gray-800 text-sm line-clamp-2">
-                    {item.product.name}
+                    {getProductName(item.product, language)}
                   </h4>
                 </div>
 
@@ -70,7 +74,7 @@ export function CartPanel({ cart, onCheckout }) {
                           {opt.name}
                         </span>
                         {opt.price > 0 && (
-                          <span className="text-orange-600">+{opt.price.toLocaleString()}원</span>
+                          <span className="text-orange-600">+{opt.price.toLocaleString()}{t('won', language)}</span>
                         )}
                       </div>
                     ))}
@@ -80,9 +84,9 @@ export function CartPanel({ cart, onCheckout }) {
                 {/* 가격 */}
                 <div className="pt-2 border-t border-gray-200">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">금액</span>
+                    <span className="text-xs text-gray-500">{t('amount', language)}</span>
                     <span className="text-base font-bold text-orange-600">
-                      {item.totalPrice.toLocaleString()}원
+                      {item.totalPrice.toLocaleString()}{t('won', language)}
                     </span>
                   </div>
                 </div>
@@ -96,13 +100,13 @@ export function CartPanel({ cart, onCheckout }) {
       {cart.length > 0 && (
         <div className="border-t-2 border-gray-200 p-4 bg-gray-50">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-600">총 수량</span>
-            <span className="text-sm font-semibold">{totalCount}개</span>
+            <span className="text-sm text-gray-600">{t('totalQuantity', language)}</span>
+            <span className="text-sm font-semibold">{totalCount}{t('items', language)}</span>
           </div>
           <div className="flex items-center justify-between mb-4">
-            <span className="text-lg font-bold text-gray-800">총 금액</span>
+            <span className="text-lg font-bold text-gray-800">{t('totalAmount', language)}</span>
             <span className="text-2xl font-bold text-orange-600">
-              {totalPrice.toLocaleString()}원
+              {totalPrice.toLocaleString()}{t('won', language)}
             </span>
           </div>
 
@@ -111,7 +115,7 @@ export function CartPanel({ cart, onCheckout }) {
             onClick={onCheckout}
             className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white text-xl font-bold py-4 rounded-xl transition-all transform hover:scale-105 shadow-lg"
           >
-            💳 결제하기
+            💳 {t('checkout', language)}
           </button>
         </div>
       )}

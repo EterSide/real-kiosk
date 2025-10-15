@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useKioskStore } from '@/store/kioskStore';
+import { t } from '@/lib/translations';
 
 /**
  * 주문 완료 팝업
  * 주문번호 표시 + 3초 후 자동 닫힘
  */
 export function OrderCompleteModal({ orderNumber, onClose }) {
+  const { language } = useKioskStore();
+  
   useEffect(() => {
     // 3초 후 자동 닫힘
     const timer = setTimeout(() => {
@@ -27,13 +31,13 @@ export function OrderCompleteModal({ orderNumber, onClose }) {
             </div>
           </div>
           <h2 className="text-3xl font-bold text-gray-800 mb-2">
-            주문이 완료되었습니다!
+            {t('orderComplete', language)}
           </h2>
         </div>
 
         {/* 주문번호 */}
         <div className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl p-6 mb-6">
-          <p className="text-white text-center text-sm mb-2">주문번호</p>
+          <p className="text-white text-center text-sm mb-2">{t('orderNumber', language)}</p>
           <p className="text-white text-center text-5xl font-bold tracking-wider">
             {orderNumber}
           </p>
@@ -42,17 +46,17 @@ export function OrderCompleteModal({ orderNumber, onClose }) {
         {/* 안내 메시지 */}
         <div className="text-center space-y-2">
           <p className="text-gray-600 text-lg">
-            잠시 후 음식을 준비해 드리겠습니다
+            {t('foodPreparing', language)}
           </p>
           <p className="text-gray-500 text-sm">
-            화면 번호를 확인해 주세요
+            {t('checkScreenNumber', language)}
           </p>
         </div>
 
         {/* 자동 닫힘 안내 */}
         <div className="mt-6 text-center">
           <p className="text-gray-400 text-xs">
-            3초 후 자동으로 닫힙니다...
+            {t('autoClose', language)}
           </p>
         </div>
       </div>
