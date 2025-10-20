@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { createGoogleSTTRecorder } from '@/services/googleCloudSTT';
 
 /**
  * 음성 인식 훅
- * Web Speech API 사용
+ * Web Speech API 또는 Google Cloud STT 사용
  */
-export function useSpeechRecognition(onResult, enabled = false, language = 'ko') {
+export function useSpeechRecognition(onResult, enabled = false, language = 'ko', speechEngine = 'web') {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
@@ -13,6 +14,9 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
   const enabledRef = useRef(enabled); // ref로 관리
   const languageRef = useRef(language); // ref로 관리
   const isManuallyStoppedRef = useRef(false); // 수동 중지 플래그
+  const speechEngineRef = useRef(speechEngine); // ref로 관리
+  const googleRecorderRef = useRef(null); // Google STT Recorder
+  const micStreamRef = useRef(null); // 마이크 스트림
   
   // enabled 업데이트
   useEffect(() => {
@@ -23,6 +27,11 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
   useEffect(() => {
     languageRef.current = language;
   }, [language]);
+  
+  // speechEngine 업데이트
+  useEffect(() => {
+    speechEngineRef.current = speechEngine;
+  }, [speechEngine]);
 
   // 음성 인식 초기화
   useEffect(() => {
@@ -126,6 +135,7 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
       }
 
       if (interim) {
+        console.log('[음성인식] 🔤 중간 결과:', interim);
         setInterimTranscript(interim);
         
         // 침묵 타이머 리셋
@@ -137,10 +147,12 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
         silenceTimerRef.current = setTimeout(() => {
           if (interim.trim()) {
             // 최종 결과로 처리
+            console.log('[음성인식] ⏱️ 침묵 감지 → 최종 결과로 처리:', interim.trim());
             setTranscript(interim.trim());
             setInterimTranscript('');
             
             if (onResult) {
+              console.log('[음성인식] 📤 onResult 호출:', interim.trim());
               onResult(interim.trim());
             }
           }
@@ -149,6 +161,7 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
 
       if (final) {
         const finalText = final.trim();
+        console.log('[음성인식] ✅ 최종 결과:', finalText);
         setTranscript(finalText);
         setInterimTranscript('');
         
@@ -157,6 +170,7 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
         }
         
         if (onResult && finalText) {
+          console.log('[음성인식] 📤 onResult 호출:', finalText);
           onResult(finalText);
         }
       }
@@ -174,12 +188,118 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
     };
   }, [onResult]);
 
+  // Google STT 초기화
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Google STT 모드일 때만 마이크 스트림 준비
+    if (speechEngine === 'google') {
+      console.log('[음성인식] Google STT 마이크 준비 중...');
+      
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          console.log('[음성인식] ✅ 마이크 스트림 획득');
+          micStreamRef.current = stream;
+        })
+        .catch(error => {
+          console.error('[음성인식] ❌ 마이크 접근 실패:', error);
+        });
+      
+      return () => {
+        // 클린업: 스트림 정리
+        if (micStreamRef.current) {
+          micStreamRef.current.getTracks().forEach(track => track.stop());
+          micStreamRef.current = null;
+        }
+        if (googleRecorderRef.current) {
+          googleRecorderRef.current.stop();
+          googleRecorderRef.current = null;
+        }
+      };
+    }
+  }, [speechEngine]);
+
   // enabled 상태에 따라 시작/중지
   useEffect(() => {
+    // 🎯 Google STT 사용
+    if (speechEngine === 'google') {
+      console.log('[음성인식] Google STT 모드');
+      
+      if (enabled && !isListening) {
+        console.log('[음성인식] Google STT 시작 시도...');
+        
+        if (!micStreamRef.current) {
+          console.warn('[음성인식] ⚠️ 마이크 스트림 없음, 대기...');
+          return;
+        }
+        
+        try {
+          // Google STT Recorder 생성
+          googleRecorderRef.current = createGoogleSTTRecorder(micStreamRef.current, {
+            language: languageRef.current,
+            recordDuration: 4000, // 4초마다 자동 전송 (너무 길면 답답함)
+            onResult: (transcript) => {
+              console.log('[음성인식] ✅ Google STT 결과:', transcript);
+              
+              // 빈 결과 무시
+              if (!transcript || transcript.trim() === '') {
+                console.log('[음성인식] ⚠️ 빈 결과, 무시하고 계속 녹음');
+              } else {
+                console.log('[음성인식] 📝 텍스트:', transcript);
+                setTranscript(transcript);
+                if (onResult) {
+                  console.log('[음성인식] 📤 onResult 호출 (Google STT):', transcript);
+                  onResult(transcript);
+                }
+              }
+              
+              // 🔄 자동으로 다시 녹음 시작 (연속 인식)
+              setTimeout(() => {
+                if (enabledRef.current && googleRecorderRef.current) {
+                  console.log('[음성인식] 🔄 다음 녹음 시작...');
+                  googleRecorderRef.current.start();
+                }
+              }, 300);
+            },
+            onError: (error) => {
+              console.error('[음성인식] ❌ Google STT 에러:', error);
+              
+              // 에러 발생해도 계속 시도 (네트워크 문제 등)
+              setTimeout(() => {
+                if (enabledRef.current && googleRecorderRef.current) {
+                  console.log('[음성인식] 🔄 에러 후 재시도...');
+                  googleRecorderRef.current.start();
+                }
+              }, 1000);
+            },
+          });
+          
+          // 녹음 시작
+          googleRecorderRef.current.start();
+          setIsListening(true);
+          console.log('[음성인식] ✅ Google STT 시작됨 (4초마다 자동 전송)');
+        } catch (error) {
+          console.error('[음성인식] ❌ Google STT 시작 실패:', error);
+        }
+      } else if (!enabled && isListening) {
+        console.log('[음성인식] Google STT 중지...');
+        
+        if (googleRecorderRef.current) {
+          googleRecorderRef.current.stop();
+          googleRecorderRef.current = null;
+        }
+        
+        setIsListening(false);
+      }
+      
+      return;
+    }
+    
+    // 🌐 Web Speech API 사용 (기본)
     if (!recognitionRef.current) return;
 
     if (enabled && !isListening) {
-      console.log('[음성인식] enabled=true, 시작 시도...');
+      console.log('[음성인식] Web Speech API 시작 시도...');
       console.log('[음성인식] 언어:', languageRef.current);
       isManuallyStoppedRef.current = false;
       
@@ -203,11 +323,11 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
         }
       }, 200);
     } else if (!enabled && isListening) {
-      console.log('[음성인식] enabled=false, 중지...');
+      console.log('[음성인식] Web Speech API 중지...');
       isManuallyStoppedRef.current = true;
       recognitionRef.current.stop();
     }
-  }, [enabled, isListening]);
+  }, [enabled, isListening, speechEngine]);
 
   const start = useCallback(() => {
     if (recognitionRef.current && !isListening) {

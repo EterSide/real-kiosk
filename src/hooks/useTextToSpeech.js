@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { speakWithGoogleTTS } from '@/services/googleCloudTTS';
 
 /**
  * 한국어 TTS를 위한 텍스트 전처리
@@ -25,13 +26,14 @@ function preprocessKoreanText(text) {
 
 /**
  * TTS (Text-to-Speech) 훅
- * Web Speech API 사용
+ * Web Speech API 또는 Google Cloud TTS 사용
  */
-export function useTextToSpeech(onSpeechEnd) {
+export function useTextToSpeech(onSpeechEnd, speechEngine = 'web', customerInfo = null) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [queue, setQueue] = useState([]);
   const [voicesLoaded, setVoicesLoaded] = useState(false);
   const synthRef = useRef(null);
+  const currentAudioRef = useRef(null); // Google TTS용 Audio 엘리먼트
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -55,13 +57,84 @@ export function useTextToSpeech(onSpeechEnd) {
   }, []);
 
   const speak = useCallback((text, options = {}) => {
-    if (!synthRef.current || !text) {
-      console.warn('[TTS] speak 호출 실패:', { hasSynth: !!synthRef.current, hasText: !!text });
+    if (!text) {
+      console.warn('[TTS] speak 호출 실패: 텍스트 없음');
       return;
     }
 
     console.log('[TTS] 🔊 speak 호출:', text);
     console.log('[TTS] 언어:', options.language || 'ko');
+    console.log('[TTS] 엔진:', speechEngine);
+    console.log('[TTS] 고객 정보:', customerInfo);
+
+    // 🎯 Google Cloud TTS 사용
+    if (speechEngine === 'google') {
+      console.log('[TTS] ✅ Google Cloud TTS 사용');
+      
+      // 현재 재생 중인 오디오 중지
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      
+      // 성별 기반 목소리 선택 (반대로!)
+      let gender = 'female'; // 기본값
+      if (customerInfo && customerInfo.gender) {
+        // 🔄 남성 고객 → 여성 목소리, 여성 고객 → 남성 목소리
+        gender = customerInfo.gender === 'male' ? 'female' : 'male';
+        console.log('[TTS] 🎭 성별 반전: 고객', customerInfo.gender, '→ 목소리', gender);
+      }
+      
+      const language = options.language || 'ko';
+      
+      speakWithGoogleTTS(text, {
+        language,
+        gender,
+        rate: options.rate || (language === 'ko' ? 0.9 : 1.0),
+        pitch: options.pitch || 0,
+        onStart: () => {
+          console.log('[TTS] ✅ Google TTS 시작:', text);
+          setIsSpeaking(true);
+        },
+        onEnd: () => {
+          console.log('[TTS] ✅ Google TTS 종료');
+          setIsSpeaking(false);
+          currentAudioRef.current = null;
+          if (onSpeechEnd) {
+            onSpeechEnd();
+          }
+        },
+        onError: (error) => {
+          console.error('[TTS] ❌ Google TTS 에러:', error);
+          setIsSpeaking(false);
+          currentAudioRef.current = null;
+          
+          // 폴백: Web Speech API로 재시도
+          console.log('[TTS] 🔄 폴백: Web Speech API로 재시도');
+          speakWithWebSpeech(text, options);
+        },
+      }).then(audio => {
+        currentAudioRef.current = audio;
+      }).catch(error => {
+        console.error('[TTS] ❌ Google TTS 실행 실패:', error);
+      });
+      
+      return;
+    }
+
+    // 🌐 Web Speech API 사용 (기본)
+    console.log('[TTS] ✅ Web Speech API 사용');
+    speakWithWebSpeech(text, options);
+  }, [speechEngine, customerInfo, onSpeechEnd]);
+
+  // Web Speech API로 말하기
+  const speakWithWebSpeech = useCallback((text, options = {}) => {
+    if (!synthRef.current || !text) {
+      console.warn('[TTS] Web Speech API 호출 실패:', { hasSynth: !!synthRef.current, hasText: !!text });
+      return;
+    }
+
+    console.log('[TTS] 🌐 Web Speech API로 재생');
 
     // 현재 재생 중인 것 취소
     synthRef.current.cancel();
@@ -179,13 +252,23 @@ export function useTextToSpeech(onSpeechEnd) {
         paused: synthRef.current.paused
       });
     }, 100);
-  }, [onSpeechEnd]);
+  }, []);
 
   const cancel = useCallback(() => {
+    console.log('[TTS] ⏹️ 취소 요청');
+    
+    // Google TTS 오디오 중지
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+    
+    // Web Speech API 중지
     if (synthRef.current) {
       synthRef.current.cancel();
-      setIsSpeaking(false);
     }
+    
+    setIsSpeaking(false);
   }, []);
 
   const pause = useCallback(() => {

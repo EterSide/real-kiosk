@@ -173,10 +173,14 @@ export function transition(currentState, action, payload = {}, language = 'ko', 
         
         // 옵션이 있는 경우
         if (product.optionGroups && product.optionGroups.length > 0) {
+          // 첫 번째 옵션 그룹의 상세 안내 메시지 생성
+          const firstOptionGroup = product.optionGroups[0];
+          const optionMessage = generateOptionMessage(firstOptionGroup, language);
+          
           return {
             newState: KioskState.ASK_OPTIONS,
             pendingOptions: [...product.optionGroups],
-            message: t('selectOption', language),
+            message: optionMessage,
           };
         }
         
@@ -197,10 +201,14 @@ export function transition(currentState, action, payload = {}, language = 'ko', 
         
         // 남은 옵션이 있는 경우
         if (remainingOptions.length > 0) {
+          // 다음 옵션 그룹의 상세 안내 메시지 생성
+          const nextOptionGroup = remainingOptions[0];
+          const optionMessage = generateOptionMessage(nextOptionGroup, language);
+          
           return {
             newState: KioskState.ASK_OPTIONS,
             pendingOptions: remainingOptions,
-            message: t('selectOption', language),
+            message: optionMessage,
           };
         }
         
@@ -303,6 +311,45 @@ function generateDisambiguationMessage(candidates, language = 'ko') {
     .join(', ');
   
   return `${t('whichMenu', language)} ${menuList}`;
+}
+
+/**
+ * 옵션 선택 메시지 생성 (번호 포함)
+ */
+function generateOptionMessage(optionGroup, language = 'ko') {
+  if (!optionGroup || !optionGroup.options || optionGroup.options.length === 0) {
+    return t('selectOption', language);
+  }
+  
+  // 옵션 그룹 이름
+  const groupName = optionGroup.name;
+  
+  // 옵션이 많으면 (5개 이상) 번호만 안내
+  if (optionGroup.options.length >= 5) {
+    if (language === 'ko') {
+      return `${groupName}을 선택해주세요. 화면의 번호를 말씀하시거나 터치해주세요.`;
+    } else {
+      return `Please select ${groupName}. Say the number or touch the screen.`;
+    }
+  }
+  
+  // 옵션이 적으면 (4개 이하) 모든 옵션 안내
+  const optionList = optionGroup.options
+    .slice(0, 4) // 최대 4개까지만
+    .map((opt, idx) => {
+      if (language === 'ko') {
+        return `${idx + 1}번 ${opt.name}`;
+      } else {
+        return `${idx + 1}. ${opt.name}`;
+      }
+    })
+    .join(', ');
+  
+  if (language === 'ko') {
+    return `${groupName}을 선택해주세요. ${optionList}`;
+  } else {
+    return `Please select ${groupName}. ${optionList}`;
+  }
 }
 
 /**

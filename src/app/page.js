@@ -10,6 +10,7 @@ import { OrderScreen } from '@/components/OrderScreen';
 import { DebugPanel } from '@/components/DebugPanel';
 import { TTSTestButton } from '@/components/TTSTestButton';
 import { PaymentModal } from '@/components/PaymentModal';
+import { SpeechEngineToggle } from '@/components/SpeechEngineToggle';
 import { KioskState } from '@/lib/stateMachine';
 import { matchMenu, matchOption, detectConfirmation, detectMoreOrder } from '@/services/menuMatcher';
 import { getAvailableProducts, getCategories } from '@/services/api';
@@ -26,6 +27,8 @@ export default function KioskPage() {
     lastMessage,
     lastInput,
     language,
+    speechEngine,
+    customerInfo,
     setProducts,
     setCategories,
     onCustomerDetected,
@@ -72,18 +75,22 @@ export default function KioskPage() {
   }, [onCustomerDetected]);
 
   // 웹캠 고객 감지
-  const { videoRef, isDetecting, isLoaded, detectionProgress, customerInfo } = useCustomerDetection(
+  const { videoRef, isDetecting, isLoaded, detectionProgress, customerInfo: detectedCustomerInfo } = useCustomerDetection(
     handleCustomerDetected,
     currentState === KioskState.IDLE
   );
 
-  // TTS
-  const { speak, isSpeaking } = useTextToSpeech(onTTSCompleted);
+  // TTS (speechEngine과 customerInfo 전달)
+  const { speak, isSpeaking } = useTextToSpeech(onTTSCompleted, speechEngine, customerInfo);
 
   // 음성 인식 결과 처리
   const handleSpeechResult = useCallback((transcript) => {
-    console.log('[Page] 🎤 음성 인식 결과:', transcript);
-    console.log('[Page] 현재 상태:', currentState);
+    console.log('╔═══════════════════════════════════════════════╗');
+    console.log('║  [Page] 🎤 음성 인식 결과 처리 시작           ║');
+    console.log('╚═══════════════════════════════════════════════╝');
+    console.log('[Page] 📢 음성 입력:', transcript);
+    console.log('[Page] 🔄 현재 상태:', currentState);
+    console.log('[Page] 📋 후보 수:', candidates.length);
 
     // 상태를 먼저 캡처 (onSpeechReceived가 상태를 변경하기 전)
     const state = currentState;
@@ -91,32 +98,170 @@ export default function KioskPage() {
     // 상태별 처리
     if (state === KioskState.LISTENING || state === KioskState.PROCESSING) {
       // 메뉴 매칭
-      console.log('[Page] 메뉴 매칭 시작...');
+      console.log('[Page] ──────────────────────────────────────');
+      console.log('[Page] 📍 LISTENING/PROCESSING 상태: 메뉴 매칭');
+      console.log('[Page] 🔍 전체 상품에서 검색 중... (총', products.length, '개)');
       const result = matchMenu(transcript, products, language); // 언어 전달
-      console.log('[Page] 메뉴 매칭 결과:', result.candidates.length, '개');
+      console.log('[Page] ✅ 메뉴 매칭 완료:', result.candidates.length, '개 후보 발견');
+      
+      if (result.candidates.length > 0) {
+        console.log('[Page] 📝 후보 목록:');
+        result.candidates.slice(0, 5).forEach((c, i) => {
+          console.log(`[Page]   ${i + 1}. ${c.product.name} (점수: ${c.score.toFixed(1)})`);
+        });
+      }
+      
+      // ✅ 숫자가 포함된 경우 자동 선택 (예: "1번 와퍼세트")
+      console.log('[Page] 🔢 숫자 자동 선택 체크...');
+      console.log('[Page] 🔢 추출된 숫자:', result.keywords.numbers);
+      
+      if (result.keywords.numbers.length > 0 && result.candidates.length > 0) {
+        const selectedNumber = result.keywords.numbers[0];
+        const selectedIndex = selectedNumber - 1;
+        
+        console.log('[Page] ✅ 숫자 발견:', selectedNumber);
+        console.log('[Page] 📍 인덱스 변환:', selectedNumber, '→', selectedIndex);
+        console.log('[Page] 📊 매칭 결과 범위: 0 ~', result.candidates.length - 1);
+        
+        if (selectedIndex >= 0 && selectedIndex < result.candidates.length) {
+          const selectedProduct = result.candidates[selectedIndex].product;
+          console.log('[Page] ✅✅✅ 숫자로 자동 선택! ✅✅✅');
+          console.log('[Page] 🎯 선택된 메뉴:', selectedProduct.name);
+          console.log('[Page] 💰 가격:', selectedProduct.price, '원');
+          console.log('[Page] 📦 옵션 그룹:', selectedProduct.optionGroups?.length || 0, '개');
+          console.log('[Page] ──────────────────────────────────────');
+          
+          // 직접 상품 선택 처리 (onMenuMatched 건너뛰고 바로 선택)
+          onSpeechReceived(transcript);
+          onMenuMatched([result.candidates[selectedIndex]]); // 선택된 하나만 전달
+          return;
+        } else {
+          console.log('[Page] ⚠️ 숫자가 매칭 결과 범위를 벗어남:', selectedNumber);
+          console.log('[Page] 💡 힌트: 1번부터', result.candidates.length, '번까지 가능합니다');
+        }
+      } else {
+        console.log('[Page] ℹ️ 숫자 없음 또는 매칭 결과 없음 → 일반 매칭 처리');
+      }
       
       onSpeechReceived(transcript); // 상태 업데이트
       onMenuMatched(result.candidates);
+      console.log('[Page] ──────────────────────────────────────');
     } 
     else if (state === KioskState.ASK_DISAMBIGUATION) {
       // 후보 중 선택
-      console.log('[Page] 후보 중 선택 처리...');
-      const result = matchMenu(transcript, candidates.map(c => c.product), language); // 언어 전달
+      console.log('[Page] ──────────────────────────────────────');
+      console.log('[Page] 📍 ASK_DISAMBIGUATION 상태: 후보 중 선택');
+      console.log('[Page] 📢 음성 입력:', transcript);
+      console.log('[Page] 📋 현재 후보 수:', candidates.length);
+      console.log('[Page] 📋 후보 목록:');
+      candidates.forEach((c, i) => {
+        console.log(`[Page]   ${i + 1}번. ${c.product.name}`);
+      });
+      console.log('[Page] ──────────────────────────────────────');
+      
+      // ✅ 숫자 선택 우선 처리 ("1번", "2번", "첫번째" 등)
+      console.log('[Page] 🔢 Step 1: 숫자 추출 시도...');
+      const { keywords } = matchMenu(transcript, products, language);
+      
+      console.log('[Page] 🔢 추출된 숫자:', keywords.numbers);
+      
+      if (keywords.numbers.length > 0) {
+        const selectedNumber = keywords.numbers[0];
+        const selectedIndex = selectedNumber - 1;
+        console.log('[Page] ✅ 숫자 발견:', selectedNumber);
+        console.log('[Page] 📍 인덱스 변환:', selectedNumber, '→', selectedIndex);
+        console.log('[Page] 📊 유효 범위: 0 ~', candidates.length - 1, '(1번 ~', candidates.length, '번)');
+        
+        if (selectedIndex >= 0 && selectedIndex < candidates.length) {
+          const selectedProduct = candidates[selectedIndex].product;
+          console.log('[Page] ✅✅✅ 숫자 선택 성공! ✅✅✅');
+          console.log('[Page] 🎯 선택된 메뉴:', selectedProduct.name);
+          console.log('[Page] 💰 가격:', selectedProduct.price, '원');
+          console.log('[Page] 📦 상품 ID:', selectedProduct.id);
+          console.log('[Page] ──────────────────────────────────────');
+          onSpeechReceived(transcript);
+          onProductClarified(selectedProduct);
+          return;
+        } else {
+          console.error('[Page] ❌ 잘못된 번호!');
+          console.error('[Page]   입력:', selectedNumber, '번');
+          console.error('[Page]   유효 범위: 1번 ~', candidates.length, '번');
+          console.log('[Page] 💡 힌트: 1부터', candidates.length, '사이의 번호를 말해주세요');
+        }
+      } else {
+        console.log('[Page] ⚠️ 숫자 미발견');
+        console.log('[Page] 💡 "1번", "2번", "첫번째" 등으로 말해보세요');
+      }
+      
+      // 숫자 선택 실패 시 이름으로 매칭
+      console.log('[Page] ──────────────────────────────────────');
+      console.log('[Page] 🔍 Step 2: 이름으로 매칭 시도...');
+      const result = matchMenu(transcript, candidates.map(c => c.product), language);
+      console.log('[Page] 📊 매칭 결과:', result.candidates.length, '개');
+      
       if (result.candidates.length > 0) {
+        console.log('[Page] ✅ 이름 매칭 성공:', result.candidates[0].product.name);
         onSpeechReceived(transcript);
         onProductClarified(result.candidates[0].product);
+      } else {
+        console.error('[Page] ❌ 이름 매칭도 실패');
+        console.log('[Page] 💡 힌트: 정확한 메뉴명이나 번호로 다시 말씀해주세요');
       }
+      console.log('[Page] ──────────────────────────────────────');
     }
     else if (state === KioskState.ASK_OPTIONS) {
-      // 옵션 선택
-      console.log('[Page] 옵션 선택 처리...');
+      // 옵션 선택 (이름으로만, 숫자 선택 비활성화)
+      console.log('┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓');
+      console.log('┃  [Page] 🎤 옵션 선택 음성 처리              ┃');
+      console.log('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛');
+      console.log('[Page] 📢 음성 입력:', transcript);
+      console.log('[Page] 🔄 현재 상태:', state);
+      console.log('[Page] 📋 남은 옵션 그룹:', pendingOptions.length, '개');
+      
       if (pendingOptions.length > 0) {
-        const result = matchOption(transcript, pendingOptions[0].options);
+        const currentGroup = pendingOptions[0];
+        console.log('[Page] 🎯 현재 옵션 그룹:', currentGroup.name);
+        console.log('[Page] 📝 옵션 개수:', currentGroup.options?.length || 0);
+        console.log('[Page] ⚙️ 숫자 선택:', 'true (숫자 + 키워드 하이브리드)');
+        console.log('[Page] ──────────────────────────────────────');
+        
+        // ✅ allowNumberSelection=true → 숫자 선택 + 키워드 매칭 활성화
+        const result = matchOption(transcript, currentGroup.options, true);
+        
+        console.log('[Page] ──────────────────────────────────────');
+        console.log('[Page] 📊 matchOption 결과:', result.selectedOption ? '매칭 성공' : '매칭 실패');
+        
         if (result.selectedOption) {
-          onSpeechReceived(transcript);
-          onOptionSelected(result.selectedOption);
+          console.log('[Page] ✅ 선택된 옵션:', result.selectedOption.name);
+          console.log('[Page] 💰 옵션 가격:', result.selectedOption.price || 0, '원');
+          console.log('[Page] 📈 신뢰도:', result.confidence);
+          
+          // 신뢰도에 따른 처리
+          if (result.confidence === 'high') {
+            // 높은 신뢰도: 바로 선택
+            console.log('[Page] ✅ 신뢰도 높음 → 바로 선택');
+            onSpeechReceived(transcript);
+            onOptionSelected(result.selectedOption);
+          } else if (result.confidence === 'medium') {
+            // 중간 신뢰도: 재확인 (TODO: 향후 개선)
+            // 현재는 바로 선택하되 로그만 남김
+            console.log('[Page] ⚠️ 신뢰도 중간 → 바로 선택 (재확인 로직은 향후 추가 가능)');
+            onSpeechReceived(transcript);
+            onOptionSelected(result.selectedOption);
+          } else {
+            // 낮은 신뢰도: 재질문
+            console.log('[Page] ❌ 신뢰도 낮음 → 재질문 필요');
+            console.log('[Page] 💡 정확한 옵션명이나 번호로 다시 말씀해주세요');
+            // 옵션 선택하지 않고 다시 듣기 (상태 유지)
+          }
+        } else {
+          console.log('[Page] ❌ 옵션 매칭 실패');
+          console.log('[Page] 💡 힌트: 정확한 옵션명 또는 화면을 터치하여 선택하세요');
         }
+      } else {
+        console.warn('[Page] ⚠️ pendingOptions가 비어있음!');
       }
+      console.log('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛');
     }
     else if (state === KioskState.ASK_MORE) {
       // 추가 주문 여부
@@ -167,19 +312,20 @@ export default function KioskPage() {
   }, [currentState, products, candidates, pendingOptions, onSpeechReceived, onMenuMatched, onProductClarified, onOptionSelected, onMoreOrder, onConfirm]);
 
   // 음성 인식 (LISTENING 이후 상태에서만 활성화)
-  // ❌ ASK_OPTIONS는 제외 (팝업으로만 선택)
+  // ✅ ASK_OPTIONS도 포함 (음성으로 이름 선택 가능, 터치도 가능)
   const shouldListen = 
     currentState === KioskState.LISTENING ||
     currentState === KioskState.PROCESSING ||
     currentState === KioskState.ASK_DISAMBIGUATION ||
-    // currentState === KioskState.ASK_OPTIONS || // ❌ 팝업 사용하므로 음성 인식 OFF
+    currentState === KioskState.ASK_OPTIONS || // ✅ 옵션도 음성 선택 가능 (이름으로)
     currentState === KioskState.ASK_MORE ||
     currentState === KioskState.CONFIRM;
   
   const { interimTranscript, isListening } = useSpeechRecognition(
     handleSpeechResult,
     shouldListen,
-    language // 언어 전달
+    language, // 언어 전달
+    speechEngine // 엔진 전달
   );
   
   // 음성 인식 상태 변경 로그 (강화)
@@ -372,7 +518,7 @@ export default function KioskPage() {
           videoRef={videoRef} 
           isDetecting={isDetecting}
           detectionProgress={detectionProgress}
-          customerInfo={customerInfo}
+          customerInfo={detectedCustomerInfo}
           onManualStart={handleManualStart}
         />
       ) : (
@@ -413,10 +559,14 @@ export default function KioskPage() {
         isSpeaking={isSpeaking}
         lastInput={lastInput}
         cartCount={cart.length}
+        speechEngine={speechEngine}
       />
       
       {/* TTS 테스트 버튼 */}
       <TTSTestButton />
+      
+      {/* 음성 엔진 토글 */}
+      <SpeechEngineToggle />
     </>
   );
 }

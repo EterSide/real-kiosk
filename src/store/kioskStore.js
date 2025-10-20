@@ -9,6 +9,9 @@ export const useKioskStore = create((set, get) => ({
   
   // 고객 정보 (나이/성별)
   customerInfo: null,
+  
+  // 음성 엔진 설정 ('web' | 'google')
+  speechEngine: 'web', // 기본값: Web Speech API
 
   // 상태 전환
   dispatch: (action, payload = {}) => {
@@ -61,6 +64,12 @@ export const useKioskStore = create((set, get) => ({
   
   // 언어 설정
   setLanguage: (language) => set({ language }),
+  
+  // 음성 엔진 설정
+  setSpeechEngine: (engine) => {
+    console.log('[Store] 음성 엔진 변경:', engine);
+    set({ speechEngine: engine });
+  },
 
   // 고객 감지
   onCustomerDetected: () => {

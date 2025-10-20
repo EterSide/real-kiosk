@@ -79,18 +79,24 @@ function extractKeywords(text) {
     keywords.isSingle = true;
   }
 
-  // 숫자 추출
+  // 숫자 추출 (아라비아 숫자)
   const numberMatches = text.match(/\d+/g);
   if (numberMatches) {
     keywords.numbers = numberMatches.map(n => parseInt(n));
+    console.log('[extractKeywords] 아라비아 숫자 추출:', keywords.numbers);
     // 첫 번째 숫자를 수량으로 간주 (10 이하일 경우)
     if (keywords.numbers[0] && keywords.numbers[0] <= 10) {
       keywords.quantity = keywords.numbers[0];
     }
   }
 
-  // 한글 숫자 변환
+  // 한글 숫자 변환 (우선순위: 긴 단어부터 매칭)
   const koreanNumbers = {
+    '첫번째': 1, '첫 번째': 1, '첫째': 1,
+    '두번째': 2, '두 번째': 2, '둘째': 2,
+    '세번째': 3, '세 번째': 3, '셋째': 3,
+    '네번째': 4, '네 번째': 4, '넷째': 4,
+    '다섯번째': 5, '다섯 번째': 5,
     '하나': 1, '한': 1, '일': 1,
     '둘': 2, '두': 2, '이': 2,
     '셋': 3, '세': 3, '삼': 3,
@@ -102,16 +108,45 @@ function extractKeywords(text) {
     '아홉': 9, '구': 9,
     '열': 10, '십': 10,
   };
+  
+  // ✅ 제외할 단어들 (숫자로 인식하면 안 되는 단어)
+  const excludeWords = ['세트', '세트메뉴', '이벤트', '네이버', '네트워크'];
+  let shouldExtractNumbers = true;
+  
+  for (const word of excludeWords) {
+    if (text.includes(word)) {
+      console.log('[extractKeywords] ⚠️ 제외 단어 발견:', word, '→ 한글 숫자 추출 주의');
+      shouldExtractNumbers = false;
+      break;
+    }
+  }
+
+  // "번" 단위로 숫자 추출 강화 ("1번", "일번", "첫번째" 등)
+  const numberWithBun = text.match(/(\d+|첫|두|세|네|다섯|여섯|일곱|여덟|아홉|열)\s*번(째)?/g);
+  if (numberWithBun) {
+    console.log('[extractKeywords] "번" 패턴 발견:', numberWithBun);
+  }
 
   for (const [korean, num] of Object.entries(koreanNumbers)) {
     if (text.includes(korean)) {
-      keywords.numbers.push(num);
+      // ✅ "세트" 같은 단어가 있으면 "세"는 무시
+      if (!shouldExtractNumbers && ['세', '이', '네', '한', '두'].includes(korean)) {
+        console.log('[extractKeywords] ⚠️ 제외 단어 포함으로 인해 무시:', korean);
+        continue;
+      }
+      
+      // 중복 방지: 이미 추가된 숫자는 제외
+      if (!keywords.numbers.includes(num)) {
+        keywords.numbers.push(num);
+        console.log('[extractKeywords] 한글 숫자 추출:', korean, '→', num);
+      }
       if (keywords.quantity === 1) {
         keywords.quantity = num;
       }
     }
   }
 
+  console.log('[extractKeywords] 최종 결과:', { text, numbers: keywords.numbers });
   return keywords;
 }
 
@@ -210,61 +245,242 @@ export function matchMenu(userInput, products, language = 'ko') {
 }
 
 /**
+ * 스마트 키워드 매칭 (사이즈, 별칭, 기본 옵션)
+ */
+function matchOptionWithKeywords(text, options) {
+  console.log('[옵션 매칭] 🧠 스마트 키워드 매칭 시작...');
+  
+  // 사이즈 키워드 (L/Large)
+  const largeKeywords = ['큰거', '큰 거', '라지', 'large', '엘', '큰', '크게', '업사이즈', '업', 'l'];
+  const regularKeywords = ['작은거', '작은 거', '레귤러', 'regular', '알', '작은', '작게', '기본 사이즈', 'r'];
+  
+  // 별칭 매칭
+  const aliases = {
+    '감자': ['프렌치프라이', '감자튀김', 'fries', 'french fry'],
+    '콜라': ['코카콜라', 'coca cola', 'coke'],
+    '사이다': ['스프라이트', 'sprite'],
+    '햄버거': ['버거', 'burger'],
+    '치즈': ['cheese'],
+    '어니언': ['양파', 'onion'],
+  };
+  
+  // 기본 옵션 키워드
+  const defaultKeywords = ['기본', 'default', '그냥', '기본으로', '그대로'];
+  
+  // 1. 기본 옵션 체크
+  for (const keyword of defaultKeywords) {
+    if (text.includes(keyword)) {
+      const defaultOption = options.find(opt => opt.isDefault === true);
+      if (defaultOption) {
+        console.log('[옵션 매칭] ✅ 기본 옵션 키워드 매칭:', keyword, '→', defaultOption.name);
+        return {
+          selectedOption: defaultOption,
+          confidence: 'high',
+          matchType: 'default',
+        };
+      }
+    }
+  }
+  
+  // 2. 사이즈 매칭 (L)
+  for (const keyword of largeKeywords) {
+    if (text.includes(keyword)) {
+      // L이 포함된 옵션 찾기
+      const largeOption = options.find(opt => 
+        opt.name && (opt.name.includes('(L)') || opt.name.includes('L') || opt.name.toLowerCase().includes('large'))
+      );
+      if (largeOption) {
+        console.log('[옵션 매칭] ✅ 사이즈 키워드 매칭 (Large):', keyword, '→', largeOption.name);
+        return {
+          selectedOption: largeOption,
+          confidence: 'high',
+          matchType: 'size',
+        };
+      }
+    }
+  }
+  
+  // 3. 사이즈 매칭 (R)
+  for (const keyword of regularKeywords) {
+    if (text.includes(keyword)) {
+      // R이 포함된 옵션 찾기
+      const regularOption = options.find(opt => 
+        opt.name && (opt.name.includes('(R)') || opt.name.toLowerCase().includes('regular'))
+      );
+      if (regularOption) {
+        console.log('[옵션 매칭] ✅ 사이즈 키워드 매칭 (Regular):', keyword, '→', regularOption.name);
+        return {
+          selectedOption: regularOption,
+          confidence: 'high',
+          matchType: 'size',
+        };
+      }
+    }
+  }
+  
+  // 4. 별칭 매칭
+  for (const [alias, targets] of Object.entries(aliases)) {
+    if (text.includes(alias)) {
+      console.log('[옵션 매칭] 🔍 별칭 발견:', alias);
+      // 별칭에 해당하는 옵션 찾기
+      for (const target of targets) {
+        const matchedOption = options.find(opt => 
+          opt.name && opt.name.toLowerCase().includes(target.toLowerCase())
+        );
+        if (matchedOption) {
+          console.log('[옵션 매칭] ✅ 별칭 매칭 성공:', alias, '→', matchedOption.name);
+          return {
+            selectedOption: matchedOption,
+            confidence: 'medium',
+            matchType: 'alias',
+          };
+        }
+      }
+    }
+  }
+  
+  console.log('[옵션 매칭] ⚠️ 키워드 매칭 실패');
+  return null;
+}
+
+/**
  * 옵션 매칭
  */
-export function matchOption(userInput, options) {
+export function matchOption(userInput, options, allowNumberSelection = true) {
   const text = userInput.trim().toLowerCase();
   const keywords = extractKeywords(text);
 
-  console.log('[MenuMatcher] 옵션 매칭 시작:', { userInput, optionsCount: options.length });
+  console.log('═════════════════════════════════════════════');
+  console.log('[옵션 매칭] 🎯 매칭 시작');
+  console.log('[옵션 매칭] 📢 음성 인식 결과:', userInput);
+  console.log('[옵션 매칭] 🔤 소문자 변환:', text);
+  console.log('[옵션 매칭] 📊 옵션 개수:', options.length);
+  console.log('[옵션 매칭] 🔢 숫자 선택 허용:', allowNumberSelection);
+  console.log('[옵션 매칭] 📋 추출된 숫자:', keywords.numbers);
+  
+  // 옵션 목록 출력
+  console.log('[옵션 매칭] 📝 옵션 목록:');
+  options.forEach((opt, idx) => {
+    if (opt && opt.name) {
+      console.log(`[옵션 매칭]   ${idx + 1}. ${opt.name} (가격: ${opt.price || 0}원)`);
+    } else {
+      console.warn(`[옵션 매칭]   ${idx + 1}. ⚠️ 잘못된 옵션:`, opt);
+    }
+  });
+  console.log('─────────────────────────────────────────────');
 
-  // 숫자로 선택한 경우
-  if (keywords.numbers.length > 0) {
+  // 숫자로 선택한 경우 (allowNumberSelection이 true일 때만)
+  if (allowNumberSelection && keywords.numbers.length > 0) {
     const index = keywords.numbers[0] - 1;
+    console.log('[옵션 매칭] 🔢 숫자 매칭 시도:', keywords.numbers[0], '→ 인덱스:', index);
+    
     if (index >= 0 && index < options.length) {
-      console.log('[MenuMatcher] 숫자 선택:', options[index].name);
+      console.log('[옵션 매칭] ✅ 숫자 선택 성공:', options[index].name);
+      console.log('═════════════════════════════════════════════');
       return {
         selectedOption: options[index],
         confidence: 'high',
       };
+    } else {
+      console.warn('[옵션 매칭] ⚠️ 숫자 범위 벗어남:', index, '(유효 범위: 0~' + (options.length - 1) + ')');
     }
+  }
+  
+  // 🧠 스마트 키워드 매칭 시도
+  const keywordMatch = matchOptionWithKeywords(text, options);
+  if (keywordMatch) {
+    console.log('[옵션 매칭] ✅ 키워드 매칭 성공:', keywordMatch.selectedOption.name, '(타입:', keywordMatch.matchType, ')');
+    console.log('═════════════════════════════════════════════');
+    return keywordMatch;
   }
 
   // 텍스트 매칭
+  console.log('[옵션 매칭] 🔍 텍스트 매칭 시작...');
   const candidates = [];
-  for (const option of options) {
+  
+  for (let i = 0; i < options.length; i++) {
+    const option = options[i];
+    
     // 안전성 체크
     if (!option || !option.name) {
-      console.warn('[MenuMatcher] ⚠️ 잘못된 옵션 데이터:', option);
+      console.warn(`[옵션 매칭] ⚠️ 잘못된 옵션 데이터 (${i + 1}번):`, option);
       continue;
     }
     
     const optionName = option.name.toLowerCase();
     let score = 0;
+    const scoreDetails = [];
 
-    if (text.includes(optionName) || optionName.includes(text)) {
+    // 1. 완전/부분 일치 체크
+    if (text.includes(optionName)) {
       score += 100;
+      scoreDetails.push(`완전포함(+100)`);
+    } else if (optionName.includes(text)) {
+      score += 100;
+      scoreDetails.push(`부분포함(+100)`);
     }
 
+    // 2. 유사도 계산
     const similarity = calculateSimilarity(text, optionName);
-    score += similarity * 50;
+    const similarityScore = similarity * 50;
+    score += similarityScore;
+    scoreDetails.push(`유사도(+${similarityScore.toFixed(1)})`);
+
+    console.log(`[옵션 매칭]   ${i + 1}. "${option.name}" (소문자: "${optionName}")`);
+    console.log(`[옵션 매칭]      → 유사도: ${(similarity * 100).toFixed(1)}% | 점수: ${score.toFixed(1)} | 상세: ${scoreDetails.join(', ')}`);
 
     if (score > 20) {
       candidates.push({
         option,
         score,
+        similarity,
       });
+    } else {
+      console.log(`[옵션 매칭]      → ❌ 점수 부족 (${score.toFixed(1)} ≤ 20)`);
     }
   }
 
+  console.log('─────────────────────────────────────────────');
+  console.log('[옵션 매칭] 📊 후보 개수:', candidates.length);
+
+  // 점수 순으로 정렬
   candidates.sort((a, b) => b.score - a.score);
 
   if (candidates.length > 0) {
+    console.log('[옵션 매칭] 🏆 최종 후보 (점수순):');
+    candidates.slice(0, 3).forEach((c, idx) => {
+      console.log(`[옵션 매칭]   ${idx + 1}위. "${c.option.name}" - 점수: ${c.score.toFixed(1)} | 유사도: ${(c.similarity * 100).toFixed(1)}%`);
+    });
+    
+    const bestMatch = candidates[0];
+    
+    // 개선된 신뢰도 계산 로직
+    let confidence;
+    if (bestMatch.score >= 90) {
+      confidence = 'high';
+      console.log('[옵션 매칭] 📈 신뢰도: 높음 (점수 90+)');
+    } else if (bestMatch.score >= 60) {
+      confidence = 'medium';
+      console.log('[옵션 매칭] 📈 신뢰도: 중간 (점수 60-90) → 재확인 권장');
+    } else {
+      confidence = 'low';
+      console.log('[옵션 매칭] 📈 신뢰도: 낮음 (점수 <60) → 재질문 필요');
+    }
+    
+    console.log('[옵션 매칭] ✅ 최종 선택:', bestMatch.option.name);
+    console.log('[옵션 매칭] 📊 점수:', bestMatch.score.toFixed(1), '| 신뢰도:', confidence);
+    console.log('═════════════════════════════════════════════');
+    
     return {
-      selectedOption: candidates[0].option,
-      confidence: candidates[0].score > 80 ? 'high' : 'medium',
+      selectedOption: bestMatch.option,
+      confidence,
+      score: bestMatch.score, // 점수도 반환 (재확인 로직에서 사용)
     };
   }
+
+  console.log('[옵션 매칭] ❌ 매칭 실패: 후보 없음');
+  console.log('[옵션 매칭] 💡 힌트: 정확한 옵션명을 말하거나 번호(1, 2, 3...)로 선택하세요');
+  console.log('═════════════════════════════════════════════');
 
   return {
     selectedOption: null,
