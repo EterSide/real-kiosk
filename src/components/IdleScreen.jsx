@@ -9,8 +9,11 @@ import { t } from '@/lib/translations';
  */
 export function IdleScreen({ videoRef, isDetecting, detectionProgress = 0, onManualStart, customerInfo }) {
   const { language, setLanguage } = useKioskStore();
+  
   const handleClick = () => {
-    console.log('[IdleScreen] 화면 클릭됨');
+    console.log('[IdleScreen] 화면 클릭됨 - 사용자 인터랙션');
+    
+    // ✅ 사용자 클릭으로 권한 획득 (onManualStart에서 처리됨)
     if (onManualStart) {
       onManualStart();
     }

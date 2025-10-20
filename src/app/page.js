@@ -10,10 +10,11 @@ import { OrderScreen } from '@/components/OrderScreen';
 import { DebugPanel } from '@/components/DebugPanel';
 import { TTSTestButton } from '@/components/TTSTestButton';
 import { PaymentModal } from '@/components/PaymentModal';
-import { SpeechEngineToggle } from '@/components/SpeechEngineToggle';
+import { RecommendationLoadingModal } from '@/components/RecommendationLoadingModal';
 import { KioskState } from '@/lib/stateMachine';
-import { matchMenu, matchOption, detectConfirmation, detectMoreOrder } from '@/services/menuMatcher';
+import { matchMenu, matchOption, detectConfirmation, detectMoreOrder, detectRecommendation } from '@/services/menuMatcher';
 import { getAvailableProducts, getCategories } from '@/services/api';
+import { getMenuRecommendations, mapRecommendationsToProducts } from '@/services/menuRecommendationApi';
 
 export default function KioskPage() {
   const {
@@ -27,10 +28,12 @@ export default function KioskPage() {
     lastMessage,
     lastInput,
     language,
-    speechEngine,
     customerInfo,
+    recommendationResults,
     setProducts,
     setCategories,
+    setRecommendationResults,
+    clearRecommendationResults,
     onCustomerDetected,
     onSpeechReceived,
     onTTSCompleted,
@@ -50,6 +53,9 @@ export default function KioskPage() {
   
   // 결제 모달 상태
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  
+  // AI 추천 로딩 상태
+  const [isRecommendationLoading, setIsRecommendationLoading] = useState(false);
 
   // IDLE 상태로 돌아가면 팝업 닫기
   useEffect(() => {
@@ -61,10 +67,47 @@ export default function KioskPage() {
     }
   }, [currentState]);
 
+  // TTS 활성화 (브라우저 권한 획득) - 미리 선언
+  const activateTTSRef = useRef(false);
+  
+  const activateTTS = useCallback(() => {
+    if (activateTTSRef.current) return;
+    
+    console.log('[TTS] 🔓 브라우저 권한 활성화 시도...');
+    
+    // 1. Web Speech API 권한 획득
+    if (window.speechSynthesis) {
+      const utterance = new SpeechSynthesisUtterance('');
+      utterance.volume = 0; // 무음
+      window.speechSynthesis.speak(utterance);
+      console.log('[TTS] ✅ Web Speech API 권한 획득');
+    }
+    
+    // 2. Google Cloud TTS (Audio) 권한 획득
+    try {
+      const audio = new Audio();
+      audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      audio.volume = 0;
+      audio.play().then(() => {
+        console.log('[TTS] ✅ Audio autoplay 권한 획득');
+      }).catch(err => {
+        console.warn('[TTS] ⚠️ Audio autoplay 권한 실패:', err.message);
+      });
+    } catch (error) {
+      console.warn('[TTS] ⚠️ Audio 생성 실패:', error.message);
+    }
+    
+    activateTTSRef.current = true;
+    console.log('[TTS] ✅ 권한 활성화 완료!');
+  }, []);
+
   // 고객 감지 콜백 (안정화) - 고객 정보 포함
   const handleCustomerDetected = useCallback((customerInfo) => {
     console.log('[Page] 고객 감지 콜백 실행');
     console.log('[Page] 고객 정보:', customerInfo);
+    
+    // ✅ TTS 권한 활성화 (얼굴 감지도 사용자 인터랙션으로 간주)
+    activateTTS();
     
     // 고객 정보를 store에 저장
     if (customerInfo) {
@@ -72,7 +115,7 @@ export default function KioskPage() {
     }
     
     onCustomerDetected();
-  }, [onCustomerDetected]);
+  }, [onCustomerDetected, activateTTS]);
 
   // 웹캠 고객 감지
   const { videoRef, isDetecting, isLoaded, detectionProgress, customerInfo: detectedCustomerInfo } = useCustomerDetection(
@@ -80,11 +123,11 @@ export default function KioskPage() {
     currentState === KioskState.IDLE
   );
 
-  // TTS (speechEngine과 customerInfo 전달)
-  const { speak, isSpeaking } = useTextToSpeech(onTTSCompleted, speechEngine, customerInfo);
+  // TTS (customerInfo 전달)
+  const { speak, isSpeaking } = useTextToSpeech(onTTSCompleted, customerInfo);
 
   // 음성 인식 결과 처리
-  const handleSpeechResult = useCallback((transcript) => {
+  const handleSpeechResult = useCallback(async (transcript) => {
     console.log('╔═══════════════════════════════════════════════╗');
     console.log('║  [Page] 🎤 음성 인식 결과 처리 시작           ║');
     console.log('╚═══════════════════════════════════════════════╝');
@@ -97,7 +140,68 @@ export default function KioskPage() {
 
     // 상태별 처리
     if (state === KioskState.LISTENING || state === KioskState.PROCESSING) {
-      // 메뉴 매칭
+      // 🎯 추천 의도 감지 (우선 순위)
+      console.log('[Page] ──────────────────────────────────────');
+      console.log('[Page] 🔍 추천 의도 감지 체크...');
+      const isRecommendation = detectRecommendation(transcript, language);
+      
+      if (isRecommendation) {
+        console.log('[Page] ═══════════════════════════════════════');
+        console.log('[Page] 🌟 AI 추천 모드 활성화!');
+        console.log('[Page] ═══════════════════════════════════════');
+        console.log('[Page] 📢 사용자 요청:', transcript);
+        
+        // AI 추천 API 호출
+        try {
+          onSpeechReceived(transcript);
+          
+          // 로딩 모달 표시
+          setIsRecommendationLoading(true);
+          console.log('[Page] 🔄 AI 추천 로딩 모달 표시');
+          
+          console.log('[Page] 🔄 AI 추천 API 호출 중...');
+          const recommendationData = await getMenuRecommendations(transcript, 3);
+          
+          console.log('[Page] ✅ AI 추천 API 응답 받음!');
+          console.log('[Page] 추천 개수:', recommendationData.recommendations?.length || 0);
+          
+          // API 응답을 제품과 매핑
+          const mappedResults = mapRecommendationsToProducts(recommendationData, products);
+          
+          console.log('[Page] ✅ 제품 매핑 완료:', mappedResults.length, '개');
+          
+          if (mappedResults.length > 0) {
+            // 추천 결과 저장
+            setRecommendationResults(mappedResults);
+            
+            // 후보로 설정 (기존 플로우 재활용)
+            console.log('[Page] 🎯 추천 결과를 후보로 설정');
+            onMenuMatched(mappedResults);
+          } else {
+            console.log('[Page] ⚠️ 매핑된 제품이 없습니다');
+            onMenuMatched([]);
+          }
+          
+          console.log('[Page] ═══════════════════════════════════════');
+        } catch (error) {
+          console.error('[Page] ❌ AI 추천 API 에러:', error);
+          console.error('[Page] 에러 메시지:', error.message);
+          
+          // 에러 시 일반 메뉴 매칭으로 폴백
+          console.log('[Page] 💡 일반 메뉴 매칭으로 폴백...');
+          const result = matchMenu(transcript, products, language);
+          onSpeechReceived(transcript);
+          onMenuMatched(result.candidates);
+        } finally {
+          // 로딩 모달 닫기
+          setIsRecommendationLoading(false);
+          console.log('[Page] ✅ AI 추천 로딩 모달 닫기');
+        }
+        
+        return; // 추천 처리 완료, 이후 로직 스킵
+      }
+      
+      // 일반 메뉴 매칭
       console.log('[Page] ──────────────────────────────────────');
       console.log('[Page] 📍 LISTENING/PROCESSING 상태: 메뉴 매칭');
       console.log('[Page] 🔍 전체 상품에서 검색 중... (총', products.length, '개)');
@@ -264,6 +368,67 @@ export default function KioskPage() {
       console.log('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛');
     }
     else if (state === KioskState.ASK_MORE) {
+      // 🎯 추천 의도 감지 (우선 순위)
+      console.log('[Page] ──────────────────────────────────────');
+      console.log('[Page] 🔍 추천 의도 감지 체크 (ASK_MORE)...');
+      const isRecommendation = detectRecommendation(transcript, language);
+      
+      if (isRecommendation) {
+        console.log('[Page] ═══════════════════════════════════════');
+        console.log('[Page] 🌟 AI 추천 모드 활성화! (추가 주문 중)');
+        console.log('[Page] ═══════════════════════════════════════');
+        console.log('[Page] 📢 사용자 요청:', transcript);
+        
+        // AI 추천 API 호출
+        try {
+          onSpeechReceived(transcript);
+          
+          // 로딩 모달 표시
+          setIsRecommendationLoading(true);
+          console.log('[Page] 🔄 AI 추천 로딩 모달 표시');
+          
+          console.log('[Page] 🔄 AI 추천 API 호출 중...');
+          const recommendationData = await getMenuRecommendations(transcript, 3);
+          
+          console.log('[Page] ✅ AI 추천 API 응답 받음!');
+          console.log('[Page] 추천 개수:', recommendationData.recommendations?.length || 0);
+          
+          // API 응답을 제품과 매핑
+          const mappedResults = mapRecommendationsToProducts(recommendationData, products);
+          
+          console.log('[Page] ✅ 제품 매핑 완료:', mappedResults.length, '개');
+          
+          if (mappedResults.length > 0) {
+            // 추천 결과 저장
+            setRecommendationResults(mappedResults);
+            
+            // 후보로 설정 (기존 플로우 재활용)
+            console.log('[Page] 🎯 추천 결과를 후보로 설정');
+            onMenuMatched(mappedResults);
+          } else {
+            console.log('[Page] ⚠️ 매핑된 제품이 없습니다');
+            onMenuMatched([]);
+          }
+          
+          console.log('[Page] ═══════════════════════════════════════');
+        } catch (error) {
+          console.error('[Page] ❌ AI 추천 API 에러:', error);
+          console.error('[Page] 에러 메시지:', error.message);
+          
+          // 에러 시 일반 메뉴 매칭으로 폴백
+          console.log('[Page] 💡 일반 메뉴 매칭으로 폴백...');
+          const result = matchMenu(transcript, products, language);
+          onSpeechReceived(transcript);
+          onMenuMatched(result.candidates);
+        } finally {
+          // 로딩 모달 닫기
+          setIsRecommendationLoading(false);
+          console.log('[Page] ✅ AI 추천 로딩 모달 닫기');
+        }
+        
+        return; // 추천 처리 완료, 이후 로직 스킵
+      }
+      
       // 추가 주문 여부
       console.log('[Page] 추가 주문 여부 처리...');
       const confirmation = detectMoreOrder(transcript, language); // 언어 전달
@@ -313,19 +478,21 @@ export default function KioskPage() {
 
   // 음성 인식 (LISTENING 이후 상태에서만 활성화)
   // ✅ ASK_OPTIONS도 포함 (음성으로 이름 선택 가능, 터치도 가능)
+  // ✅ TTS 재생 중에는 음성 인식 비활성화 (TTS 소리를 인식하거나 간섭 방지)
   const shouldListen = 
-    currentState === KioskState.LISTENING ||
-    currentState === KioskState.PROCESSING ||
-    currentState === KioskState.ASK_DISAMBIGUATION ||
-    currentState === KioskState.ASK_OPTIONS || // ✅ 옵션도 음성 선택 가능 (이름으로)
-    currentState === KioskState.ASK_MORE ||
-    currentState === KioskState.CONFIRM;
+    !isSpeaking && ( // ✅ TTS 재생 중이 아닐 때만
+      currentState === KioskState.LISTENING ||
+      currentState === KioskState.PROCESSING ||
+      currentState === KioskState.ASK_DISAMBIGUATION ||
+      currentState === KioskState.ASK_OPTIONS || // ✅ 옵션도 음성 선택 가능 (이름으로)
+      currentState === KioskState.ASK_MORE ||
+      currentState === KioskState.CONFIRM
+    );
   
   const { interimTranscript, isListening } = useSpeechRecognition(
     handleSpeechResult,
     shouldListen,
-    language, // 언어 전달
-    speechEngine // 엔진 전달
+    language // 언어 전달
   );
   
   // 음성 인식 상태 변경 로그 (강화)
@@ -333,9 +500,10 @@ export default function KioskPage() {
     console.log('[Page] 🎤 ────────────────────────────────');
     console.log('[Page] 🎤 음성 인식 상태:', shouldListen ? '✅ ON' : '❌ OFF');
     console.log('[Page] 🎤 현재 상태:', currentState);
+    console.log('[Page] 🎤 TTS 재생 중:', isSpeaking ? '🔊 YES (음성 인식 중지)' : '❌ NO');
     console.log('[Page] 🎤 실제 listening:', isListening);
     console.log('[Page] 🎤 ────────────────────────────────');
-  }, [shouldListen, currentState, isListening]);
+  }, [shouldListen, currentState, isListening, isSpeaking]);
 
   // TTS 실행 (메시지가 변경될 때만)
   const lastPlayedMessageRef = useRef('');
@@ -477,24 +645,6 @@ export default function KioskPage() {
     reset();
   }, [reset]);
 
-  // TTS 활성화 (브라우저 권한 획득)
-  const activateTTSRef = useRef(false);
-  
-  const activateTTS = useCallback(() => {
-    if (activateTTSRef.current) return;
-    
-    console.log('[TTS] 🔓 브라우저 권한 활성화 시도...');
-    
-    // 더미 TTS 재생으로 권한 획득
-    if (window.speechSynthesis) {
-      const utterance = new SpeechSynthesisUtterance('');
-      utterance.volume = 0; // 무음
-      window.speechSynthesis.speak(utterance);
-      activateTTSRef.current = true;
-      console.log('[TTS] ✅ 권한 활성화 완료!');
-    }
-  }, []);
-
   // 수동 시작 핸들러 (테스트용)
   const handleManualStart = useCallback(() => {
     if (currentState === KioskState.IDLE) {
@@ -550,6 +700,9 @@ export default function KioskPage() {
         onCancel={handlePaymentCancel}
       />
       
+      {/* AI 추천 로딩 모달 */}
+      <RecommendationLoadingModal isOpen={isRecommendationLoading} />
+      
       {/* 디버그 패널 */}
       <DebugPanel
         currentState={currentState}
@@ -559,14 +712,10 @@ export default function KioskPage() {
         isSpeaking={isSpeaking}
         lastInput={lastInput}
         cartCount={cart.length}
-        speechEngine={speechEngine}
       />
       
       {/* TTS 테스트 버튼 */}
       <TTSTestButton />
-      
-      {/* 음성 엔진 토글 */}
-      <SpeechEngineToggle />
     </>
   );
 }

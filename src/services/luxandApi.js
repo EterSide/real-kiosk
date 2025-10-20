@@ -5,7 +5,7 @@
  */
 
 // Luxand API 토큰 (하드코딩)
-const LUXAND_API_TOKEN = "";
+const LUXAND_API_TOKEN = "83a679715aea4d51858a08c98133fd2a";
 
 /**
  * 비디오 엘리먼트에서 이미지 캡처

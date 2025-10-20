@@ -8,9 +8,14 @@ import { t, getProductName } from '@/lib/translations';
  * 오른쪽에 고정 표시
  */
 export function CartPanel({ cart, onCheckout }) {
-  const { language } = useKioskStore();
+  const { language, removeFromCart } = useKioskStore();
   const totalPrice = cart.reduce((sum, item) => sum + item.totalPrice, 0);
   const totalCount = cart.length;
+
+  // 장바구니 아이템 삭제 핸들러
+  const handleRemoveItem = (itemId) => {
+    removeFromCart(itemId);
+  };
 
   return (
     <div className="h-full bg-white border-l-4 border-orange-500 flex flex-col">
@@ -46,11 +51,11 @@ export function CartPanel({ cart, onCheckout }) {
                     {index + 1}
                   </span>
                   <button
-                    className="text-gray-400 hover:text-red-500 transition-colors"
-                    onClick={() => console.log(t('delete', language) + ':', item.id)}
+                    className="text-gray-400 hover:text-red-500 transition-colors text-2xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50"
+                    onClick={() => handleRemoveItem(item.id)}
                     title={t('delete', language)}
                   >
-                    <span className="text-lg">×</span>
+                    ×
                   </button>
                 </div>
 

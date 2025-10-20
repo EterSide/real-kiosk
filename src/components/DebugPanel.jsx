@@ -11,7 +11,6 @@ export function DebugPanel({
   isSpeaking,
   lastInput,
   cartCount,
-  speechEngine,
 }) {
   // 프로덕션에서는 숨김
   if (process.env.NODE_ENV === 'production') return null;
@@ -38,20 +37,11 @@ export function DebugPanel({
         </div>
         
         <div>
-          <span className="text-gray-400">음성엔진:</span>{' '}
-          <span className={speechEngine === 'google' ? 'text-green-400' : 'text-blue-400'}>
-            {speechEngine === 'google' ? '☁️ Google' : '🌐 Web'}
-          </span>
-        </div>
-        
-        <div>
           <span className="text-gray-400">음성인식:</span>{' '}
           <span className={isListening ? 'text-green-400' : 'text-gray-500'}>
             {isListening ? '🎤 듣는중' : '⏸️ 대기'}
           </span>
-          {speechEngine === 'google' && isListening && (
-            <span className="text-orange-400 text-[10px] ml-1">(4초간격)</span>
-          )}
+          <span className="text-blue-400 text-[10px] ml-1">(Web Speech)</span>
         </div>
         
         <div>
@@ -59,6 +49,7 @@ export function DebugPanel({
           <span className={isSpeaking ? 'text-blue-400' : 'text-gray-500'}>
             {isSpeaking ? '🗣️ 말하는중' : '⏸️ 대기'}
           </span>
+          <span className="text-green-400 text-[10px] ml-1">(Google Cloud)</span>
         </div>
         
         <div>

@@ -60,6 +60,36 @@ function getChosung(str) {
 }
 
 /**
+ * 공통 제외 단어 목록 (변별력이 없는 단어들)
+ */
+const COMMON_EXCLUDE_WORDS = [
+  '와퍼',
+  '버거',
+  '세트',
+  '단품',
+  '메뉴',
+];
+
+/**
+ * 텍스트에서 공통 단어 제거 (매칭 정확도 향상)
+ */
+function removeCommonWords(text) {
+  let cleaned = text.toLowerCase();
+  
+  // "와퍼", "버거" 같은 공통 단어 제거
+  for (const word of COMMON_EXCLUDE_WORDS) {
+    // 단어를 공백으로 치환 (완전히 삭제하면 단어가 붙을 수 있음)
+    cleaned = cleaned.replace(new RegExp(word, 'g'), ' ');
+  }
+  
+  // 연속된 공백을 하나로 정리
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+  
+  console.log('[removeCommonWords]', text, '→', cleaned);
+  return cleaned;
+}
+
+/**
  * 키워드 추출
  */
 function extractKeywords(text) {
@@ -185,14 +215,26 @@ export function matchMenu(userInput, products, language = 'ko') {
       productName = product.name.toLowerCase();
     }
 
+    // ✅ 공통 단어 제거한 버전으로 매칭 (정확도 향상)
+    const cleanedInput = removeCommonWords(text);
+    const cleanedProductName = removeCommonWords(productName);
+
     const productChosung = getChosung(product.name);
     const inputChosung = getChosung(text);
 
     let score = 0;
 
-    // 1. 완전 일치
+    // 1. 완전 일치 (원본 텍스트)
     if (text.includes(productName) || productName.includes(text)) {
       score += 100;
+    }
+
+    // 1-2. 완전 일치 (정제된 텍스트) - 공통 단어 제거 후 매칭
+    if (cleanedInput && cleanedProductName) {
+      if (cleanedInput.includes(cleanedProductName) || cleanedProductName.includes(cleanedInput)) {
+        score += 120; // 정제된 텍스트 매칭에 더 높은 가중치
+        console.log('[MenuMatcher] ✨ 정제 텍스트 매칭:', cleanedInput, '←→', cleanedProductName);
+      }
     }
 
     // 2. 초성 매칭
@@ -200,15 +242,22 @@ export function matchMenu(userInput, products, language = 'ko') {
       score += 50;
     }
 
-    // 3. 유사도 매칭
+    // 3. 유사도 매칭 (정제된 텍스트 사용)
+    if (cleanedInput && cleanedProductName) {
+      const cleanedSimilarity = calculateSimilarity(cleanedInput, cleanedProductName);
+      score += cleanedSimilarity * 40; // 가중치 증가
+    }
+    
+    // 3-2. 유사도 매칭 (원본 텍스트)
     const similarity = calculateSimilarity(text, productName);
-    score += similarity * 30;
+    score += similarity * 20; // 보조 점수
 
-    // 4. 부분 단어 매칭
-    const words = text.split(/\s+/);
-    for (const word of words) {
-      if (word.length >= 2 && productName.includes(word)) {
-        score += 20;
+    // 4. 부분 단어 매칭 (정제된 텍스트)
+    const cleanedWords = cleanedInput.split(/\s+/).filter(w => w.length >= 2);
+    for (const word of cleanedWords) {
+      if (cleanedProductName.includes(word)) {
+        score += 25;
+        console.log('[MenuMatcher] 단어 매칭:', word, 'in', cleanedProductName);
       }
     }
 
@@ -238,8 +287,79 @@ export function matchMenu(userInput, products, language = 'ko') {
   console.log('[MenuMatcher] 매칭 결과:', candidates.length, '개', 
     candidates.slice(0, 3).map(c => ({ name: c.product.name, score: c.score })));
 
+  // ✅ 스마트 필터링: 정확한 매칭이면 1개만, 애매하면 최대 2개까지
+  let filteredCandidates = candidates;
+  
+  if (candidates.length > 0) {
+    const topScore = candidates[0].score;
+    const secondScore = candidates.length > 1 ? candidates[1].score : 0;
+    const scoreDiff = topScore - secondScore;
+    
+    console.log('[MenuMatcher] 📊 점수 분석:');
+    console.log('[MenuMatcher]   1위:', candidates[0].product.name, '- 점수:', topScore.toFixed(1));
+    if (candidates.length > 1) {
+      console.log('[MenuMatcher]   2위:', candidates[1].product.name, '- 점수:', secondScore.toFixed(1));
+      console.log('[MenuMatcher]   점수 차이:', scoreDiff.toFixed(1));
+    }
+    console.log('[MenuMatcher]   세트 키워드:', keywords.isSet ? '있음' : '없음');
+    console.log('[MenuMatcher]   단품 키워드:', keywords.isSingle ? '있음' : '없음');
+    
+    // 🎯 특수 케이스: "세트/단품" 키워드 없이 애매하게 말한 경우 (예: "몬스터")
+    // → 단품/세트 페어가 있으면 둘 다 보여줌
+    const hasNoTypeKeyword = !keywords.isSet && !keywords.isSingle;
+    if (hasNoTypeKeyword && candidates.length >= 2) {
+      // 1위와 2위가 단품/세트 페어인지 확인
+      const first = candidates[0].product;
+      const second = candidates[1].product;
+      
+      // 이름 유사도 체크 (예: "몬스터와퍼" vs "몬스터와퍼 세트")
+      const firstName = first.name.toLowerCase().replace(/\s*(세트|단품)\s*/g, '').trim();
+      const secondName = second.name.toLowerCase().replace(/\s*(세트|단품)\s*/g, '').trim();
+      
+      const isPair = firstName === secondName && scoreDiff < 50; // 점수 차이가 너무 크지 않아야 함
+      
+      if (isPair) {
+        console.log('[MenuMatcher] 🎯 특수 케이스: 단품/세트 페어 감지!');
+        console.log('[MenuMatcher]   기본명:', firstName);
+        console.log('[MenuMatcher]   → 둘 다 보여줌 (사용자가 선택할 수 있게)');
+        filteredCandidates = candidates.slice(0, 2);
+        
+        console.log('[MenuMatcher] 🎯 최종 후보:', filteredCandidates.length, '개');
+        filteredCandidates.forEach((c, i) => {
+          console.log(`[MenuMatcher]   ${i + 1}. ${c.product.name} (점수: ${c.score.toFixed(1)})`);
+        });
+        
+        return {
+          candidates: filteredCandidates,
+          keywords,
+        };
+      }
+    }
+    
+    // 케이스 1: 1위 점수가 매우 높음 (100점 이상 = 완전 일치 또는 정제 매칭)
+    if (topScore >= 100) {
+      console.log('[MenuMatcher] ✅ 케이스 1: 1위 점수 매우 높음 (≥100) → 1개만 반환');
+      filteredCandidates = [candidates[0]];
+    }
+    // 케이스 2: 1위와 2위 점수 차이가 큼 (30점 이상)
+    else if (candidates.length > 1 && scoreDiff >= 30) {
+      console.log('[MenuMatcher] ✅ 케이스 2: 점수 차이 큼 (≥30) → 1개만 반환');
+      filteredCandidates = [candidates[0]];
+    }
+    // 케이스 3: 애매한 경우 → 최대 2개까지만
+    else {
+      console.log('[MenuMatcher] ✅ 케이스 3: 애매한 매칭 → 최대 2개까지 반환');
+      filteredCandidates = candidates.slice(0, 2);
+    }
+    
+    console.log('[MenuMatcher] 🎯 최종 후보:', filteredCandidates.length, '개');
+    filteredCandidates.forEach((c, i) => {
+      console.log(`[MenuMatcher]   ${i + 1}. ${c.product.name} (점수: ${c.score.toFixed(1)})`);
+    });
+  }
+
   return {
-    candidates: candidates.slice(0, 5), // 상위 5개만
+    candidates: filteredCandidates,
     keywords,
   };
 }
@@ -558,10 +678,35 @@ export function detectMoreOrder(userInput, language = 'ko') {
   return 'unknown';
 }
 
+/**
+ * 메뉴 추천 의도 감지
+ */
+export function detectRecommendation(userInput, language = 'ko') {
+  const text = userInput.trim().toLowerCase();
+  
+  console.log('[MenuMatcher] 추천 의도 감지:', text, '언어:', language);
+  
+  // 추천 키워드
+  const recommendKeywords = language === 'en'
+    ? ['recommend', 'suggestion', 'what do you recommend', 'what should i get', 'what is good', 'best', 'popular']
+    : ['추천', '추천해', '추천해줘', '추천해주세요', '뭐가 좋아', '뭐가 좋을까', '뭐 먹을까', '인기', '베스트', '맛있는거', '맛있는 거'];
+
+  for (const keyword of recommendKeywords) {
+    if (text.includes(keyword)) {
+      console.log('[MenuMatcher] ✅ 추천 의도 감지 (키워드:', keyword, ')');
+      return true;
+    }
+  }
+
+  console.log('[MenuMatcher] ℹ️ 추천 의도 없음');
+  return false;
+}
+
 export default {
   matchMenu,
   matchOption,
   detectConfirmation,
   detectMoreOrder,
+  detectRecommendation,
 };
 

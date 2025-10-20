@@ -15,7 +15,7 @@ export function MenuBoard({
   pendingOptions,
   onProductSelect,
 }) {
-  const { language } = useKioskStore();
+  const { language, recommendationResults } = useKioskStore();
   const [selectedCategory, setSelectedCategory] = useState(null);
 
   console.log('[MenuBoard] 렌더링:', {
@@ -111,15 +111,22 @@ export function MenuBoard({
         ) : (
           // 메뉴 선택 (더 많이 보이게)
           <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            {displayProducts.map((product, index) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                index={index}
-                onClick={() => onProductSelect && onProductSelect(product)}
-                highlighted={candidates.length > 0}
-              />
-            ))}
+            {displayProducts.map((product, index) => {
+              // ✅ 후보 모드(추천 결과)일 때만 추천 이유 표시
+              const isRecommendationMode = candidates.length > 0;
+              const recommendation = isRecommendationMode ? recommendationResults[product.id] : null;
+              
+              return (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  index={index}
+                  onClick={() => onProductSelect && onProductSelect(product)}
+                  highlighted={isRecommendationMode}
+                  recommendationReason={recommendation?.recommendationReason}
+                />
+              );
+            })}
           </div>
         )}
       </div>

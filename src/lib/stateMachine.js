@@ -32,6 +32,9 @@ export const initialState = {
   // 애매한 경우 후보 목록
   candidates: [],
   
+  // 추천 결과 (추천 이유 포함) - product_id를 키로 사용
+  recommendationResults: {},
+  
   // 미선택 옵션 그룹들
   pendingOptions: [],
   
@@ -106,11 +109,10 @@ export function transition(currentState, action, payload = {}, language = 'ko', 
         
         // 후보가 1개: 확실한 매칭
         if (candidates.length === 1) {
-          const productName = getProductName(candidates[0].product, language);
           return {
             newState: KioskState.PRODUCT_SELECTED,
             selectedProduct: candidates[0].product,
-            message: `${productName}${t('selected', language)}`,
+            message: null, // ✅ 메시지 제거 - 다음 단계 TTS와 겹치지 않도록
           };
         }
         
@@ -138,11 +140,10 @@ export function transition(currentState, action, payload = {}, language = 'ko', 
         
         // 후보가 1개: 확실한 매칭
         if (candidates.length === 1) {
-          const productName = getProductName(candidates[0].product, language);
           return {
             newState: KioskState.PRODUCT_SELECTED,
             selectedProduct: candidates[0].product,
-            message: `${productName}${t('selected', language)}`,
+            message: null, // ✅ 메시지 제거 - 다음 단계 TTS와 겹치지 않도록
           };
         }
         
@@ -157,12 +158,10 @@ export function transition(currentState, action, payload = {}, language = 'ko', 
 
     case KioskState.ASK_DISAMBIGUATION:
       if (action === 'PRODUCT_CLARIFIED') {
-        const { product } = payload;
-        const productName = getProductName(product, language);
         return {
           newState: KioskState.PRODUCT_SELECTED,
-          selectedProduct: product,
-          message: `${productName}${t('selected', language)}`,
+          selectedProduct: payload.product,
+          message: null, // ✅ 메시지 제거 - 다음 단계 TTS와 겹치지 않도록
         };
       }
       break;

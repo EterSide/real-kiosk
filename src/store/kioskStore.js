@@ -9,9 +9,6 @@ export const useKioskStore = create((set, get) => ({
   
   // 고객 정보 (나이/성별)
   customerInfo: null,
-  
-  // 음성 엔진 설정 ('web' | 'google')
-  speechEngine: 'web', // 기본값: Web Speech API
 
   // 상태 전환
   dispatch: (action, payload = {}) => {
@@ -64,12 +61,6 @@ export const useKioskStore = create((set, get) => ({
   
   // 언어 설정
   setLanguage: (language) => set({ language }),
-  
-  // 음성 엔진 설정
-  setSpeechEngine: (engine) => {
-    console.log('[Store] 음성 엔진 변경:', engine);
-    set({ speechEngine: engine });
-  },
 
   // 고객 감지
   onCustomerDetected: () => {
@@ -99,6 +90,31 @@ export const useKioskStore = create((set, get) => ({
     dispatch('TTS_COMPLETED');
   },
 
+  // 추천 결과 저장
+  setRecommendationResults: (results) => {
+    console.log('[Store] 추천 결과 저장:', results);
+    
+    // product_id를 키로 하는 객체로 변환
+    const resultsMap = {};
+    results.forEach(result => {
+      if (result.product && result.product.id) {
+        resultsMap[result.product.id] = {
+          recommendationReason: result.recommendationReason,
+          similarityScore: result.similarityScore,
+        };
+      }
+    });
+    
+    console.log('[Store] 추천 결과 맵:', resultsMap);
+    set({ recommendationResults: resultsMap });
+  },
+  
+  // 추천 결과 초기화
+  clearRecommendationResults: () => {
+    console.log('[Store] 추천 결과 초기화');
+    set({ recommendationResults: {} });
+  },
+
   // 메뉴 매칭 결과 처리
   onMenuMatched: (candidates) => {
     const { dispatch } = get();
@@ -108,7 +124,7 @@ export const useKioskStore = create((set, get) => ({
       const product = candidates[0].product;
       set({
         currentProduct: product,
-        candidates: [],
+        candidates: [], // ✅ 후보 초기화
       });
       
       dispatch('MENU_MATCHED', { candidates });
@@ -147,6 +163,12 @@ export const useKioskStore = create((set, get) => ({
           console.log('[Store] 옵션 없는 상품, 바로 장바구니 추가');
           get().addToCart();
           dispatch('CHECK_OPTIONS', { product }); // ASK_MORE로 전환
+          
+          // ✅ 장바구니 추가 후 후보 화면 초기화 (전체 메뉴로 복귀)
+          setTimeout(() => {
+            console.log('[Store] ✅ 후보 화면 초기화 → 전체 메뉴 복귀');
+            set({ candidates: [] });
+          }, 200);
         }
       }, 100);
     } else if (candidates.length > 1) {
@@ -163,7 +185,7 @@ export const useKioskStore = create((set, get) => ({
   onProductClarified: (product) => {
     set({
       currentProduct: product,
-      candidates: [],
+      candidates: [], // ✅ 후보 초기화
     });
     
     const { dispatch } = get();
@@ -181,6 +203,12 @@ export const useKioskStore = create((set, get) => ({
         console.log('[Store] 옵션 없는 상품, 바로 장바구니 추가');
         get().addToCart();
         dispatch('CHECK_OPTIONS', { product }); // ASK_MORE로 전환
+        
+        // ✅ 장바구니 추가 후 후보 화면 초기화 (전체 메뉴로 복귀)
+        setTimeout(() => {
+          console.log('[Store] ✅ 후보 화면 초기화 → 전체 메뉴 복귀');
+          set({ candidates: [], recommendationResults: {} }); // 추천 결과도 초기화
+        }, 200);
       }
     }, 100);
   },
@@ -219,6 +247,12 @@ export const useKioskStore = create((set, get) => ({
       setTimeout(() => {
         get().addToCart();
         console.log('[Store] ✅ 장바구니 추가 완료 → ASK_MORE 상태');
+        
+        // ✅ 장바구니 추가 후 후보 화면 초기화 (전체 메뉴로 복귀)
+        setTimeout(() => {
+          console.log('[Store] ✅ 후보 화면 초기화 → 전체 메뉴 복귀');
+          set({ candidates: [], recommendationResults: {} }); // 추천 결과도 초기화
+        }, 200);
       }, 100);
     } else {
       // 아직 남은 옵션이 있음
@@ -251,6 +285,12 @@ export const useKioskStore = create((set, get) => ({
     // 장바구니에 추가
     setTimeout(() => {
       get().addToCart();
+      
+      // ✅ 장바구니 추가 후 후보 화면 초기화 (전체 메뉴로 복귀)
+      setTimeout(() => {
+        console.log('[Store] ✅ 후보 화면 초기화 → 전체 메뉴 복귀');
+        set({ candidates: [], recommendationResults: {} }); // 추천 결과도 초기화
+      }, 200);
     }, 100);
   },
 
@@ -294,6 +334,25 @@ export const useKioskStore = create((set, get) => ({
     });
     
     console.log('[Store] ✅ 장바구니 추가 완료!');
+    console.log('[Store] ═══════════════════════════════');
+  },
+
+  // 장바구니에서 삭제
+  removeFromCart: (itemId) => {
+    const { cart } = get();
+    
+    console.log('[Store] ═══════════════════════════════');
+    console.log('[Store] 🗑️ 장바구니에서 삭제 시작...');
+    console.log('[Store] 삭제할 아이템 ID:', itemId);
+    console.log('[Store] 삭제 전 장바구니:', cart.length, '개');
+    
+    const updatedCart = cart.filter(item => item.id !== itemId);
+    
+    console.log('[Store] 삭제 후 장바구니:', updatedCart.length, '개');
+    
+    set({ cart: updatedCart });
+    
+    console.log('[Store] ✅ 장바구니 삭제 완료!');
     console.log('[Store] ═══════════════════════════════');
   },
 
@@ -344,6 +403,7 @@ export const useKioskStore = create((set, get) => ({
       ...initialState,
       products: get().products,
       categories: get().categories,
+      recommendationResults: {}, // 추천 결과도 초기화
     });
   },
 
