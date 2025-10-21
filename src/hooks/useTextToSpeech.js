@@ -34,6 +34,7 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
   const [voicesLoaded, setVoicesLoaded] = useState(false);
   const synthRef = useRef(null);
   const currentAudioRef = useRef(null); // Google TTS용 Audio 엘리먼트
+  const endDelayTimerRef = useRef(null); // TTS 종료 후 지연 타이머
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -54,6 +55,14 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
         synthRef.current.onvoiceschanged = loadVoices;
       }
     }
+    
+    // cleanup: 타이머 정리
+    return () => {
+      if (endDelayTimerRef.current) {
+        clearTimeout(endDelayTimerRef.current);
+        endDelayTimerRef.current = null;
+      }
+    };
   }, []);
 
   const speak = useCallback((text, options = {}) => {
@@ -68,6 +77,10 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
 
     // 🎯 항상 Google Cloud TTS 사용
     console.log('[TTS] ✅ Google Cloud TTS 사용');
+    
+    // ✅ 즉시 isSpeaking을 true로 설정 (TTS 소리가 음성 인식에 들어가는 것 방지)
+    setIsSpeaking(true);
+    console.log('[TTS] 🔒 음성 인식 즉시 차단 (isSpeaking = true)');
     
     // 현재 재생 중인 오디오 중지
     if (currentAudioRef.current) {
@@ -92,29 +105,47 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
       pitch: options.pitch || 0,
       onStart: () => {
         console.log('[TTS] ✅ Google TTS 시작:', text);
-        setIsSpeaking(true);
+        // isSpeaking은 이미 true로 설정됨
       },
       onEnd: () => {
         console.log('[TTS] ✅ Google TTS 종료');
-        setIsSpeaking(false);
         currentAudioRef.current = null;
-        if (onSpeechEnd) {
-          onSpeechEnd();
+        
+        // ✅ 1500ms 지연 후 음성 인식 다시 활성화 (TTS 에코 방지)
+        console.log('[TTS] ⏳ 1500ms 후 음성 인식 다시 활성화 예약...');
+        if (endDelayTimerRef.current) {
+          clearTimeout(endDelayTimerRef.current);
         }
+        endDelayTimerRef.current = setTimeout(() => {
+          console.log('[TTS] 🔓 음성 인식 다시 활성화 (isSpeaking = false)');
+          setIsSpeaking(false);
+          if (onSpeechEnd) {
+            onSpeechEnd();
+          }
+          endDelayTimerRef.current = null;
+        }, 1500); // ✅ 1500ms 버퍼 (TTS 잔향 완전 제거)
       },
       onError: (error) => {
         console.error('[TTS] ❌ Google TTS 에러:', error);
-        setIsSpeaking(false);
         currentAudioRef.current = null;
         
-        // 폴백: Web Speech API로 재시도
-        console.log('[TTS] 🔄 폴백: Web Speech API로 재시도');
+        // 폴백: Web Speech API로 재시도 (isSpeaking은 유지)
+        console.log('[TTS] 🔄 폴백: Web Speech API로 재시도 (isSpeaking 유지)');
         speakWithWebSpeech(text, options);
       },
     }).then(audio => {
       currentAudioRef.current = audio;
     }).catch(error => {
       console.error('[TTS] ❌ Google TTS 실행 실패:', error);
+      
+      // 타이머 정리
+      if (endDelayTimerRef.current) {
+        clearTimeout(endDelayTimerRef.current);
+        endDelayTimerRef.current = null;
+      }
+      
+      setIsSpeaking(false);
+      console.log('[TTS] 🔓 실행 실패 - 음성 인식 다시 활성화');
     });
   }, [customerInfo, onSpeechEnd]);
 
@@ -122,6 +153,15 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
   const speakWithWebSpeech = useCallback((text, options = {}) => {
     if (!synthRef.current || !text) {
       console.warn('[TTS] Web Speech API 호출 실패:', { hasSynth: !!synthRef.current, hasText: !!text });
+      
+      // 타이머 정리
+      if (endDelayTimerRef.current) {
+        clearTimeout(endDelayTimerRef.current);
+        endDelayTimerRef.current = null;
+      }
+      
+      setIsSpeaking(false);
+      console.log('[TTS] 🔓 Web Speech API 실패 - 음성 인식 다시 활성화');
       return;
     }
 
@@ -185,29 +225,46 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
     }
 
     utterance.onstart = () => {
-      console.log('[TTS] ✅ 시작:', text);
+      console.log('[TTS] ✅ Web Speech API 시작:', text);
       console.log('[TTS] 🎵 소리가 들리지 않으면 시스템 볼륨과 브라우저 탭 음소거 상태를 확인하세요');
-      setIsSpeaking(true);
+      // isSpeaking은 speak() 함수에서 이미 true로 설정됨
     };
 
     utterance.onend = () => {
-      console.log('[TTS] ✅ 종료');
-      setIsSpeaking(false);
+      console.log('[TTS] ✅ Web Speech API 종료');
       
-      if (onSpeechEnd) {
-        onSpeechEnd();
+      // ✅ 1500ms 지연 후 음성 인식 다시 활성화 (TTS 에코 방지)
+      console.log('[TTS] ⏳ 1500ms 후 음성 인식 다시 활성화 예약...');
+      if (endDelayTimerRef.current) {
+        clearTimeout(endDelayTimerRef.current);
       }
+      endDelayTimerRef.current = setTimeout(() => {
+        console.log('[TTS] 🔓 음성 인식 다시 활성화 (isSpeaking = false)');
+        setIsSpeaking(false);
+        if (onSpeechEnd) {
+          onSpeechEnd();
+        }
+        endDelayTimerRef.current = null;
+      }, 1500); // ✅ 1500ms 버퍼 (TTS 잔향 완전 제거)
     };
 
     utterance.onerror = (event) => {
-      console.error('[TTS] ❌ 에러:', event.error, event);
+      console.error('[TTS] ❌ Web Speech API 에러:', event.error, event);
       console.log('[TTS] 에러 상세:', {
         type: event.type,
         error: event.error,
         charIndex: event.charIndex,
         elapsedTime: event.elapsedTime
       });
+      
+      // 타이머 정리
+      if (endDelayTimerRef.current) {
+        clearTimeout(endDelayTimerRef.current);
+        endDelayTimerRef.current = null;
+      }
+      
       setIsSpeaking(false);
+      console.log('[TTS] 🔓 에러 발생 - 음성 인식 다시 활성화');
     };
 
     utterance.onpause = () => {
@@ -247,6 +304,12 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
 
   const cancel = useCallback(() => {
     console.log('[TTS] ⏹️ 취소 요청');
+    
+    // 지연 타이머 취소
+    if (endDelayTimerRef.current) {
+      clearTimeout(endDelayTimerRef.current);
+      endDelayTimerRef.current = null;
+    }
     
     // Google TTS 오디오 중지
     if (currentAudioRef.current) {

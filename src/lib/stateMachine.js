@@ -174,7 +174,7 @@ export function transition(currentState, action, payload = {}, language = 'ko', 
         if (product.optionGroups && product.optionGroups.length > 0) {
           // 첫 번째 옵션 그룹의 상세 안내 메시지 생성
           const firstOptionGroup = product.optionGroups[0];
-          const optionMessage = generateOptionMessage(firstOptionGroup, language);
+          const optionMessage = generateOptionMessage(firstOptionGroup, language, 0); // ✅ optionIndex = 0 (첫 번째)
           
           return {
             newState: KioskState.ASK_OPTIONS,
@@ -196,13 +196,16 @@ export function transition(currentState, action, payload = {}, language = 'ko', 
 
     case KioskState.ASK_OPTIONS:
       if (action === 'OPTION_SELECTED') {
-        const { option, remainingOptions } = payload;
+        const { option, remainingOptions, totalOptionGroups } = payload;
         
         // 남은 옵션이 있는 경우
         if (remainingOptions.length > 0) {
           // 다음 옵션 그룹의 상세 안내 메시지 생성
           const nextOptionGroup = remainingOptions[0];
-          const optionMessage = generateOptionMessage(nextOptionGroup, language);
+          
+          // ✅ 현재 옵션 인덱스 계산 (전체 개수 - 남은 개수)
+          const currentOptionIndex = totalOptionGroups ? totalOptionGroups - remainingOptions.length : 0;
+          const optionMessage = generateOptionMessage(nextOptionGroup, language, currentOptionIndex);
           
           return {
             newState: KioskState.ASK_OPTIONS,
@@ -314,8 +317,11 @@ function generateDisambiguationMessage(candidates, language = 'ko') {
 
 /**
  * 옵션 선택 메시지 생성 (번호 포함)
+ * @param {Object} optionGroup - 옵션 그룹
+ * @param {string} language - 언어 ('ko' 또는 'en')
+ * @param {number} optionIndex - 현재 옵션의 인덱스 (0부터 시작, 0=첫번째)
  */
-function generateOptionMessage(optionGroup, language = 'ko') {
+function generateOptionMessage(optionGroup, language = 'ko', optionIndex = 0) {
   if (!optionGroup || !optionGroup.options || optionGroup.options.length === 0) {
     return t('selectOption', language);
   }
@@ -326,9 +332,18 @@ function generateOptionMessage(optionGroup, language = 'ko') {
   // 옵션이 많으면 (5개 이상) 번호만 안내
   if (optionGroup.options.length >= 5) {
     if (language === 'ko') {
-      return `${groupName}을 선택해주세요. 화면의 번호를 말씀하시거나 터치해주세요.`;
+      // ✅ 첫 번째 옵션만 "화면의 번호를..." 안내, 두 번째부터는 생략
+      if (optionIndex === 0) {
+        return `${groupName}을 선택해주세요. 화면의 번호를 말씀하시거나 터치해주세요.`;
+      } else {
+        return `${groupName}을 선택해주세요.`;
+      }
     } else {
-      return `Please select ${groupName}. Say the number or touch the screen.`;
+      if (optionIndex === 0) {
+        return `Please select ${groupName}. Say the number or touch the screen.`;
+      } else {
+        return `Please select ${groupName}.`;
+      }
     }
   }
   

@@ -56,6 +56,9 @@ export default function KioskPage() {
   
   // AI 추천 로딩 상태
   const [isRecommendationLoading, setIsRecommendationLoading] = useState(false);
+  
+  // ✅ 음성 처리 중 플래그 (중복 방지)
+  const isProcessingSpeechRef = useRef(false);
 
   // IDLE 상태로 돌아가면 팝업 닫기
   useEffect(() => {
@@ -64,6 +67,9 @@ export default function KioskPage() {
       setShowOrderComplete(false);
       setShowPaymentModal(false);
       setOrderNumber('');
+      // ✅ 처리 중 플래그도 초기화
+      isProcessingSpeechRef.current = false;
+      console.log('[Page] 🔓 음성 처리 플래그 초기화');
     }
   }, [currentState]);
 
@@ -128,6 +134,23 @@ export default function KioskPage() {
 
   // 음성 인식 결과 처리
   const handleSpeechResult = useCallback(async (transcript) => {
+    // ✅ TTS 재생 중에는 무시 (1차 방어 - TTS 에코 방지)
+    if (isSpeaking) {
+      console.warn('[Page] 🔇 TTS 재생 중! 음성 입력 무시:', transcript);
+      return;
+    }
+    
+    // ✅ 처리 중 플래그 체크 (중복 방지)
+    if (isProcessingSpeechRef.current) {
+      console.warn('[Page] ⚠️⚠️⚠️ 이미 처리 중! 무시함 ⚠️⚠️⚠️');
+      console.warn('[Page] 무시된 입력:', transcript);
+      return;
+    }
+    
+    // ✅ 처리 시작 플래그 설정
+    isProcessingSpeechRef.current = true;
+    console.log('[Page] 🔒 처리 중 플래그 설정');
+    
     console.log('╔═══════════════════════════════════════════════╗');
     console.log('║  [Page] 🎤 음성 인식 결과 처리 시작           ║');
     console.log('╚═══════════════════════════════════════════════╝');
@@ -138,12 +161,13 @@ export default function KioskPage() {
     // 상태를 먼저 캡처 (onSpeechReceived가 상태를 변경하기 전)
     const state = currentState;
 
-    // 상태별 처리
-    if (state === KioskState.LISTENING || state === KioskState.PROCESSING) {
-      // 🎯 추천 의도 감지 (우선 순위)
-      console.log('[Page] ──────────────────────────────────────');
-      console.log('[Page] 🔍 추천 의도 감지 체크...');
-      const isRecommendation = detectRecommendation(transcript, language);
+    try {
+      // 상태별 처리
+      if (state === KioskState.LISTENING || state === KioskState.PROCESSING) {
+        // 🎯 추천 의도 감지 (우선 순위)
+        console.log('[Page] ──────────────────────────────────────');
+        console.log('[Page] 🔍 추천 의도 감지 체크...');
+        const isRecommendation = detectRecommendation(transcript, language);
       
       if (isRecommendation) {
         console.log('[Page] ═══════════════════════════════════════');
@@ -437,8 +461,23 @@ export default function KioskPage() {
         console.log('[Page] ✅ 추가 주문 있음 (명시적)');
         onSpeechReceived(transcript);
         onMoreOrder(true);
+      } else if (confirmation === 'pay') {
+        // ✅ 새로 추가: "없어" 또는 "결제해줘" → 바로 결제 모달 띄우기
+        console.log('[Page] 💳 바로 결제 진행!');
+        onSpeechReceived(transcript);
+        
+        // 장바구니 체크
+        if (cart.length === 0) {
+          console.warn('[Page] ⚠️ 장바구니가 비어있습니다!');
+          // 상태 유지, 다시 물어봄
+          return;
+        }
+        
+        // 바로 결제 모달 열기
+        console.log('[Page] 🔓 결제 모달 열기');
+        setShowPaymentModal(true);
       } else if (confirmation === 'no') {
-        console.log('[Page] ✅ 추가 주문 없음 → 결제');
+        console.log('[Page] ✅ 추가 주문 없음 → 확인 단계로');
         onSpeechReceived(transcript);
         onMoreOrder(false);
       } else {
@@ -470,11 +509,16 @@ export default function KioskPage() {
         onConfirm(false);
       }
     }
-    else {
-      console.log('[Page] ⚠️ 처리되지 않은 상태:', state);
-      onSpeechReceived(transcript);
+      else {
+        console.log('[Page] ⚠️ 처리되지 않은 상태:', state);
+        onSpeechReceived(transcript);
+      }
+    } finally {
+      // ✅ 처리 완료 플래그 해제
+      isProcessingSpeechRef.current = false;
+      console.log('[Page] 🔓 처리 완료 플래그 해제');
     }
-  }, [currentState, products, candidates, pendingOptions, onSpeechReceived, onMenuMatched, onProductClarified, onOptionSelected, onMoreOrder, onConfirm]);
+  }, [currentState, products, candidates, pendingOptions, onSpeechReceived, onMenuMatched, onProductClarified, onOptionSelected, onMoreOrder, onConfirm, language, cart, isSpeaking]);
 
   // 음성 인식 (LISTENING 이후 상태에서만 활성화)
   // ✅ ASK_OPTIONS도 포함 (음성으로 이름 선택 가능, 터치도 가능)
@@ -492,7 +536,8 @@ export default function KioskPage() {
   const { interimTranscript, isListening } = useSpeechRecognition(
     handleSpeechResult,
     shouldListen,
-    language // 언어 전달
+    language, // 언어 전달
+    isSpeaking // ✅ TTS 재생 중 플래그 전달 (2차 방어)
   );
   
   // 음성 인식 상태 변경 로그 (강화)
@@ -704,7 +749,7 @@ export default function KioskPage() {
       <RecommendationLoadingModal isOpen={isRecommendationLoading} />
       
       {/* 디버그 패널 */}
-      <DebugPanel
+      {/* <DebugPanel
         currentState={currentState}
         isDetecting={isDetecting}
         isLoaded={isLoaded}
@@ -713,9 +758,10 @@ export default function KioskPage() {
         lastInput={lastInput}
         cartCount={cart.length}
       />
-      
+       */}
       {/* TTS 테스트 버튼 */}
-      <TTSTestButton />
+      {/* <TTSTestButton /> */}
+      
     </>
   );
 }

@@ -197,5 +197,25 @@ export function getCategoryName(category, language = 'ko') {
   return category.name;
 }
 
+/**
+ * 옵션 그룹명 가져오기 (언어에 따라)
+ */
+export function getOptionGroupName(optionGroup, language = 'ko') {
+  if (language === 'en' && optionGroup.engName) {
+    return optionGroup.engName;
+  }
+  return optionGroup.name;
+}
+
+/**
+ * 옵션명 가져오기 (언어에 따라)
+ */
+export function getOptionName(option, language = 'ko') {
+  if (language === 'en' && option.engName) {
+    return option.engName;
+  }
+  return option.name;
+}
+
 export default translations;
 

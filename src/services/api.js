@@ -64,6 +64,7 @@ const transformOption = (option, index) => {
     return {
       id: option.id,
       name: option.optionName || option.name,
+      engName: option.optionEngName || option.engName, // 영문명 추가
       price: additionalPrice,
       isDefault: isDefault,
       createdAt: option.createdAt,
@@ -73,6 +74,7 @@ const transformOption = (option, index) => {
     return {
       id: option.id || 0,
       name: option.optionName || option.name || '옵션',
+      engName: option.optionEngName || option.engName || 'Option',
       price: 0,
       isDefault: false,
     };
@@ -89,6 +91,7 @@ const transformOptionGroup = (optionGroup) => {
     return {
       id: optionGroup.id,
       name: optionGroup.groupName || optionGroup.name,
+      engName: optionGroup.groupEngName || optionGroup.engName, // 영문명 추가
       required: optionGroup.isRequired ?? optionGroup.required ?? true,
       maxSelection: optionGroup.maxSelection || 1,
       options: options,
@@ -100,6 +103,7 @@ const transformOptionGroup = (optionGroup) => {
     return {
       id: optionGroup.id || 0,
       name: optionGroup.groupName || optionGroup.name || '옵션',
+      engName: optionGroup.groupEngName || optionGroup.engName || 'Option',
       required: true,
       maxSelection: 1,
       options: [],

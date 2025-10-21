@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
  * 음성 인식 훅
  * Web Speech API 사용
  */
-export function useSpeechRecognition(onResult, enabled = false, language = 'ko') {
+export function useSpeechRecognition(onResult, enabled = false, language = 'ko', isSpeaking = false) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
@@ -12,7 +12,11 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
   const silenceTimerRef = useRef(null);
   const enabledRef = useRef(enabled); // ref로 관리
   const languageRef = useRef(language); // ref로 관리
+  const isSpeakingRef = useRef(isSpeaking); // ✅ TTS 재생 중 플래그
   const isManuallyStoppedRef = useRef(false); // 수동 중지 플래그
+  const lastProcessedTextRef = useRef(''); // 마지막 처리한 텍스트
+  const lastProcessedTimeRef = useRef(0); // 마지막 처리 시간
+  const isListeningRef = useRef(false); // ✅ isListening 상태를 ref로도 관리
   
   // enabled 업데이트
   useEffect(() => {
@@ -23,6 +27,35 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
   useEffect(() => {
     languageRef.current = language;
   }, [language]);
+  
+  // ✅ isSpeaking 업데이트 (TTS 재생 중 체크용)
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+    if (isSpeaking) {
+      console.log('[음성인식] 🔇 TTS 재생 중 - 결과 무시 모드 활성화');
+    } else {
+      console.log('[음성인식] 🔊 TTS 종료 - 결과 처리 모드 활성화');
+    }
+  }, [isSpeaking]);
+
+  // 중복 방지 함수
+  const shouldProcessText = useCallback((text) => {
+    const now = Date.now();
+    const timeDiff = now - lastProcessedTimeRef.current;
+    const isSameText = text.trim() === lastProcessedTextRef.current.trim();
+    
+    // ✅ 같은 텍스트를 3초 이내에 다시 처리하려고 하면 무시 (2초 → 3초)
+    if (isSameText && timeDiff < 3000) {
+      console.log('[음성인식] ⚠️ 중복 방지:', text, '(', timeDiff, 'ms 전에 이미 처리됨)');
+      return false;
+    }
+    
+    // 처리 가능 → 기록 업데이트
+    lastProcessedTextRef.current = text.trim();
+    lastProcessedTimeRef.current = now;
+    console.log('[음성인식] ✅ 처리 허용:', text);
+    return true;
+  }, []);
 
   // 음성 인식 초기화
   useEffect(() => {
@@ -46,12 +79,14 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
 
     recognition.onstart = () => {
       console.log('[음성인식] ✅ 시작');
+      isListeningRef.current = true;
       setIsListening(true);
       isManuallyStoppedRef.current = false;
     };
 
     recognition.onend = () => {
       console.log('[음성인식] 종료');
+      isListeningRef.current = false;
       setIsListening(false);
       
       // 수동 중지가 아니고, enabled 상태면 자동 재시작
@@ -111,6 +146,12 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
     };
 
     recognition.onresult = (event) => {
+      // ✅ TTS 재생 중에는 결과 무시 (2차 방어)
+      if (isSpeakingRef.current) {
+        console.warn('[음성인식] 🔇 TTS 재생 중! onresult 무시');
+        return;
+      }
+      
       let interim = '';
       let final = '';
 
@@ -132,22 +173,31 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
         // 침묵 타이머 리셋
         if (silenceTimerRef.current) {
           clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
         }
         
-        // 1초 침묵 감지
+        // ✅ 1.5초로 증가 (너무 빠른 처리 방지)
         silenceTimerRef.current = setTimeout(() => {
+          // ✅ 타이머 실행 시점에도 TTS 체크
+          if (isSpeakingRef.current) {
+            console.warn('[음성인식] 🔇 TTS 재생 중! 침묵 타이머 무시');
+            silenceTimerRef.current = null;
+            return;
+          }
+          
           if (interim.trim()) {
             // 최종 결과로 처리
             console.log('[음성인식] ⏱️ 침묵 감지 → 최종 결과로 처리:', interim.trim());
             setTranscript(interim.trim());
             setInterimTranscript('');
             
-            if (onResult) {
-              console.log('[음성인식] 📤 onResult 호출:', interim.trim());
+            if (onResult && shouldProcessText(interim.trim())) {
+              console.log('[음성인식] 📤 onResult 호출 (침묵 타이머):', interim.trim());
               onResult(interim.trim());
             }
           }
-        }, 1000);
+          silenceTimerRef.current = null;
+        }, 1500); // ✅ 1초 → 1.5초
       }
 
       if (final) {
@@ -156,12 +206,20 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
         setTranscript(finalText);
         setInterimTranscript('');
         
+        // ✅ 침묵 타이머 즉시 취소 (final 우선)
         if (silenceTimerRef.current) {
           clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = null;
         }
         
-        if (onResult && finalText) {
-          console.log('[음성인식] 📤 onResult 호출:', finalText);
+        // ✅ TTS 재생 중 체크
+        if (isSpeakingRef.current) {
+          console.warn('[음성인식] 🔇 TTS 재생 중! 최종 결과 무시:', finalText);
+          return;
+        }
+        
+        if (onResult && finalText && shouldProcessText(finalText)) {
+          console.log('[음성인식] 📤 onResult 호출 (최종 결과):', finalText);
           onResult(finalText);
         }
       }
@@ -177,15 +235,24 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
         clearTimeout(silenceTimerRef.current);
       }
     };
-  }, [onResult]);
+  }, [onResult, shouldProcessText]);
 
   // enabled 상태에 따라 시작/중지 (Web Speech API)
   useEffect(() => {
     if (!recognitionRef.current) return;
 
-    if (enabled && !isListening) {
-      console.log('[음성인식] Web Speech API 시작 시도...');
-      console.log('[음성인식] 언어:', languageRef.current);
+    let startTimer = null;
+
+    if (enabled) {
+      console.log('[음성인식] 활성화 요청 - 시작 준비...');
+      console.log('[음성인식] 현재 listening 상태:', isListeningRef.current);
+      
+      // ✅ 이미 시작된 경우 스킵
+      if (isListeningRef.current) {
+        console.log('[음성인식] 이미 listening 중 - 스킵');
+        return;
+      }
+      
       isManuallyStoppedRef.current = false;
       
       // 언어 설정 업데이트
@@ -193,26 +260,43 @@ export function useSpeechRecognition(onResult, enabled = false, language = 'ko')
       recognitionRef.current.lang = langCode;
       console.log('[음성인식] 언어 설정:', langCode);
       
-      // 약간의 지연을 두고 시작 (이미 시작된 경우 방지)
-      setTimeout(() => {
-        if (recognitionRef.current && !isListening && enabledRef.current) {
+      // 약간의 지연을 두고 시작
+      startTimer = setTimeout(() => {
+        if (recognitionRef.current && enabledRef.current && !isListeningRef.current) {
+          console.log('[음성인식] ▶️ 실제 시작 실행...');
           try {
             recognitionRef.current.start();
           } catch (error) {
             if (error.message.includes('already started')) {
               console.log('[음성인식] 이미 시작됨, 무시');
             } else {
-              console.log('[음성인식] 시작 실패:', error.message);
+              console.error('[음성인식] 시작 실패:', error.message);
             }
           }
+        } else {
+          console.log('[음성인식] 시작 조건 미충족 (enabled:', enabledRef.current, ', isListening:', isListeningRef.current, ')');
         }
-      }, 200);
-    } else if (!enabled && isListening) {
-      console.log('[음성인식] Web Speech API 중지...');
+      }, 100);
+    } else {
+      console.log('[음성인식] 비활성화 요청 - 중지...');
       isManuallyStoppedRef.current = true;
-      recognitionRef.current.stop();
+      if (recognitionRef.current && isListeningRef.current) {
+        try {
+          recognitionRef.current.stop();
+          console.log('[음성인식] ⏹️ 중지 완료');
+        } catch (error) {
+          console.warn('[음성인식] 중지 에러 (무시):', error.message);
+        }
+      }
     }
-  }, [enabled, isListening]);
+
+    // ✅ cleanup: 타이머 정리
+    return () => {
+      if (startTimer) {
+        clearTimeout(startTimer);
+      }
+    };
+  }, [enabled]); // ✅ enabled만 의존성 - ref로 상태 체크
 
   const start = useCallback(() => {
     if (recognitionRef.current && !isListening) {

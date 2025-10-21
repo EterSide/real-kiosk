@@ -650,16 +650,30 @@ export function detectMoreOrder(userInput, language = 'ko') {
   
   console.log('[MenuMatcher] 추가 주문 감지:', text, '언어:', language);
   
+  // 결제 키워드 (바로 결제로 진행) - 최우선 체크
+  const paymentKeywords = language === 'en'
+    ? ['pay', 'checkout', 'payment', 'pay now', 'check out']
+    : ['결제', '결제해', '결제해줘', '결제할게', '결제할게요', '결제하기', '계산', '계산해줘', '지불'];
+  
   // 긍정 키워드 (추가 주문 있음)
   const moreKeywords = language === 'en'
     ? ['more', 'add', 'another', 'also', 'yes', 'yeah', 'and', 'plus']
     : ['추가', '더', '또', '그리고', '네', '예', '응', '있어', '주세요', '주문'];
   
-  // 부정 키워드 (추가 주문 없음)
+  // 부정 키워드 (추가 주문 없음 → 바로 결제)
   const noMoreKeywords = language === 'en'
-    ? ['no', 'nope', 'done', 'finish', 'thats all', "that's all", 'checkout', 'pay', 'nothing']
-    : ['없어', '없습니다', '됐어', '됐습니다', '끝', '이제', '결제', '아니', '아니요', '괜찮', '안'];
+    ? ['no', 'nope', 'done', 'finish', 'thats all', "that's all", 'nothing']
+    : ['없어', '없습니다', '됐어', '됐습니다', '끝', '이제', '아니', '아니요', '괜찮', '안'];
 
+  // 1. 결제 키워드 체크 (최우선)
+  for (const keyword of paymentKeywords) {
+    if (text.includes(keyword)) {
+      console.log('[MenuMatcher] 💳 바로 결제 요청 감지 (키워드:', keyword, ')');
+      return 'pay';
+    }
+  }
+
+  // 2. 추가 주문 있음
   for (const keyword of moreKeywords) {
     if (text.includes(keyword)) {
       console.log('[MenuMatcher] ✅ 추가 주문 감지 (키워드:', keyword, ')');
@@ -667,10 +681,11 @@ export function detectMoreOrder(userInput, language = 'ko') {
     }
   }
 
+  // 3. 추가 주문 없음 (바로 결제)
   for (const keyword of noMoreKeywords) {
     if (text.includes(keyword)) {
-      console.log('[MenuMatcher] ✅ 추가 주문 없음 감지 (키워드:', keyword, ')');
-      return 'no';
+      console.log('[MenuMatcher] 💳 추가 주문 없음 → 바로 결제 (키워드:', keyword, ')');
+      return 'pay';
     }
   }
 

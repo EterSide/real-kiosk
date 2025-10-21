@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useKioskStore } from '@/store/kioskStore';
-import { t, getProductName } from '@/lib/translations';
+import { t, getProductName, getOptionGroupName, getOptionName } from '@/lib/translations';
 
 /**
  * 단일 옵션 그룹 선택 팝업
@@ -15,9 +15,11 @@ export function SingleOptionModal({
   totalCount,
   onSelect,
   onCancel,
+  triggerFlyAnimation,
 }) {
   const { language } = useKioskStore();
   const [selectedOption, setSelectedOption] = useState(null);
+  const productImageRef = useRef(null);
 
   useEffect(() => {
     console.log('[SingleOptionModal] 마운트됨!', {
@@ -40,11 +42,31 @@ export function SingleOptionModal({
       return;
     }
 
+    // 마지막 옵션 선택 시 날아가는 애니메이션
+    if (currentIndex + 1 === totalCount && triggerFlyAnimation && productImageRef.current) {
+      triggerFlyAnimation(productImageRef.current, product);
+    }
+
     onSelect(selectedOption);
   };
 
   const additionalPrice = selectedOption?.price || 0;
   const finalPrice = product.price + additionalPrice;
+
+  // 옵션 그룹명 (언어에 따라)
+  const groupName = getOptionGroupName(optionGroup, language);
+
+  // 이모지 선택 (한글 또는 영문 키워드 기반)
+  const getGroupEmoji = () => {
+    const korName = optionGroup.name || '';
+    const engName = optionGroup.engName || '';
+    const combinedName = `${korName} ${engName}`.toLowerCase();
+    
+    if (combinedName.includes('사이드') || combinedName.includes('side')) return '🍟';
+    if (combinedName.includes('음료') || combinedName.includes('drink') || combinedName.includes('beverage')) return '🥤';
+    if (combinedName.includes('디저트') || combinedName.includes('dessert')) return '🍰';
+    return '🍴';
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4">
@@ -52,13 +74,30 @@ export function SingleOptionModal({
         {/* 헤더 */}
         <div className="bg-orange-500 text-white px-6 py-4 rounded-t-3xl">
           <div className="flex justify-between items-center mb-2">
-            <div>
-              <h2 className="text-2xl font-bold">{getProductName(product, language)}</h2>
-              <p className="text-sm opacity-90">
-                {language === 'ko' 
-                  ? `${optionGroup.name}을(를) 선택해주세요` 
-                  : `Please select ${optionGroup.name}`}
-              </p>
+            <div className="flex items-center gap-4">
+              {/* 제품 이미지 (애니메이션용) */}
+              <div 
+                ref={productImageRef}
+                className="w-16 h-16 rounded-xl bg-white bg-opacity-20 flex items-center justify-center overflow-hidden"
+              >
+                {product.imageUrl ? (
+                  <img
+                    src={product.imageUrl}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="text-3xl">🍔</div>
+                )}
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold">{getProductName(product, language)}</h2>
+                <p className="text-sm opacity-90">
+                  {language === 'ko' 
+                    ? `${groupName}을(를) 선택해주세요` 
+                    : `Please select ${groupName}`}
+                </p>
+              </div>
             </div>
             <div className="text-right">
               <p className="text-xs opacity-75">{language === 'ko' ? '진행 상황' : 'Progress'}</p>
@@ -73,12 +112,10 @@ export function SingleOptionModal({
         <div className="flex-1 overflow-y-auto p-6">
           <div className="flex items-center gap-3 mb-4">
             <span className="text-4xl">
-              {optionGroup.name.includes('사이드') ? '🍟' : 
-               optionGroup.name.includes('음료') ? '🥤' : 
-               optionGroup.name.includes('디저트') ? '🍰' : '🍴'}
+              {getGroupEmoji()}
             </span>
             <h3 className="text-2xl font-bold text-gray-800">
-              {optionGroup.name}
+              {groupName}
               {optionGroup.required && <span className="text-red-500 ml-2">*</span>}
             </h3>
           </div>
@@ -114,7 +151,7 @@ export function SingleOptionModal({
 
                   {/* 옵션 이름 */}
                   <div className="text-base font-bold text-gray-800 mb-3 min-h-[48px] flex items-center justify-center">
-                    {option.name}
+                    {getOptionName(option, language)}
                   </div>
 
                   {/* 가격 */}
@@ -139,7 +176,7 @@ export function SingleOptionModal({
             <div>
               <p className="text-sm text-gray-600">{language === 'ko' ? '선택한 옵션:' : 'Selected:'}</p>
               <p className="text-lg font-bold text-gray-800">
-                {selectedOption ? selectedOption.name : (language === 'ko' ? '없음' : 'None')}
+                {selectedOption ? getOptionName(selectedOption, language) : (language === 'ko' ? '없음' : 'None')}
               </p>
             </div>
             <div className="text-right">

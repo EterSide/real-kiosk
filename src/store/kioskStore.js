@@ -117,11 +117,19 @@ export const useKioskStore = create((set, get) => ({
 
   // 메뉴 매칭 결과 처리
   onMenuMatched: (candidates) => {
-    const { dispatch } = get();
+    const { dispatch, currentState } = get();
+    
+    console.log('[Store] ═══════════════════════════════');
+    console.log('[Store] 🎯 onMenuMatched 호출');
+    console.log('[Store] 후보 개수:', candidates.length);
+    console.log('[Store] 현재 상태:', currentState);
     
     if (candidates.length === 1) {
       // 명확한 매칭
       const product = candidates[0].product;
+      
+      console.log('[Store] ✅ 1개 매칭:', product.name);
+      
       set({
         currentProduct: product,
         candidates: [], // ✅ 후보 초기화
@@ -129,60 +137,54 @@ export const useKioskStore = create((set, get) => ({
       
       dispatch('MENU_MATCHED', { candidates });
       
-      // 옵션 체크 및 장바구니 추가
-      setTimeout(() => {
-        const hasOptions = product.optionGroups && product.optionGroups.length > 0;
-        
-        console.log('[Store] 옵션 체크:', { 
-          productName: product.name,
-          hasOptions,
-          optionGroupsCount: product.optionGroups?.length || 0 
+      // ✅ setTimeout 제거 - 동기적으로 처리
+      const hasOptions = product.optionGroups && product.optionGroups.length > 0;
+      
+      console.log('[Store] 옵션 체크:', { 
+        productName: product.name,
+        hasOptions,
+        optionGroupsCount: product.optionGroups?.length || 0 
+      });
+      
+      if (hasOptions) {
+        console.log('[Store] 옵션 그룹:', product.optionGroups);
+        product.optionGroups.forEach((group, idx) => {
+          console.log(`[Store]   그룹 ${idx + 1}: ${group.name} (${group.options?.length || 0}개)`);
         });
         
-        if (hasOptions) {
-          console.log('[Store] 옵션 그룹:', product.optionGroups);
-          product.optionGroups.forEach((group, idx) => {
-            console.log(`[Store]   그룹 ${idx + 1}: ${group.name} (${group.options?.length || 0}개)`);
-          });
-          
-          // 옵션 있음 → 옵션 선택 화면으로
-          console.log('[Store] 🎯 CHECK_OPTIONS 디스패치');
-          dispatch('CHECK_OPTIONS', { product });
-          
-          // pendingOptions 설정 확인
-          setTimeout(() => {
-            const state = get();
-            console.log('[Store] CHECK_OPTIONS 후 상태:', {
-              currentState: state.currentState,
-              pendingOptions: state.pendingOptions,
-              pendingCount: state.pendingOptions?.length || 0
-            });
-          }, 200);
-        } else {
-          // 옵션 없음 → 바로 장바구니 추가
-          console.log('[Store] 옵션 없는 상품, 바로 장바구니 추가');
-          get().addToCart();
-          dispatch('CHECK_OPTIONS', { product }); // ASK_MORE로 전환
-          
-          // ✅ 장바구니 추가 후 후보 화면 초기화 (전체 메뉴로 복귀)
-          setTimeout(() => {
-            console.log('[Store] ✅ 후보 화면 초기화 → 전체 메뉴 복귀');
-            set({ candidates: [] });
-          }, 200);
-        }
-      }, 100);
+        // 옵션 있음 → 옵션 선택 화면으로
+        console.log('[Store] 🎯 CHECK_OPTIONS 디스패치');
+        dispatch('CHECK_OPTIONS', { product });
+      } else {
+        // 옵션 없음 → 바로 장바구니 추가
+        console.log('[Store] 옵션 없는 상품, 바로 장바구니 추가');
+        get().addToCart();
+        dispatch('CHECK_OPTIONS', { product }); // ASK_MORE로 전환
+        
+        // ✅ 후보 화면 초기화
+        set({ candidates: [] });
+      }
+      
+      console.log('[Store] ═══════════════════════════════');
     } else if (candidates.length > 1) {
       // 여러 후보
+      console.log('[Store] ⚠️ 여러 후보:', candidates.length, '개');
       set({ candidates });
       dispatch('MENU_MATCHED', { candidates });
+      console.log('[Store] ═══════════════════════════════');
     } else {
       // 매칭 실패
+      console.log('[Store] ❌ 매칭 실패');
       dispatch('MENU_MATCHED', { candidates: [] });
+      console.log('[Store] ═══════════════════════════════');
     }
   },
 
   // 상품 명확화 (후보 중 선택)
   onProductClarified: (product) => {
+    console.log('[Store] ═══════════════════════════════');
+    console.log('[Store] 🎯 onProductClarified 호출:', product.name);
+    
     set({
       currentProduct: product,
       candidates: [], // ✅ 후보 초기화
@@ -191,31 +193,29 @@ export const useKioskStore = create((set, get) => ({
     const { dispatch } = get();
     dispatch('PRODUCT_CLARIFIED', { product });
     
-    // 옵션 체크 및 장바구니 추가
-    setTimeout(() => {
-      const hasOptions = product.optionGroups && product.optionGroups.length > 0;
+    // ✅ setTimeout 제거 - 동기적으로 처리
+    const hasOptions = product.optionGroups && product.optionGroups.length > 0;
+    
+    if (hasOptions) {
+      // 옵션 있음 → 옵션 선택 화면으로
+      console.log('[Store] 옵션 있음 → CHECK_OPTIONS');
+      dispatch('CHECK_OPTIONS', { product });
+    } else {
+      // 옵션 없음 → 바로 장바구니 추가
+      console.log('[Store] 옵션 없는 상품, 바로 장바구니 추가');
+      get().addToCart();
+      dispatch('CHECK_OPTIONS', { product }); // ASK_MORE로 전환
       
-      if (hasOptions) {
-        // 옵션 있음 → 옵션 선택 화면으로
-        dispatch('CHECK_OPTIONS', { product });
-      } else {
-        // 옵션 없음 → 바로 장바구니 추가
-        console.log('[Store] 옵션 없는 상품, 바로 장바구니 추가');
-        get().addToCart();
-        dispatch('CHECK_OPTIONS', { product }); // ASK_MORE로 전환
-        
-        // ✅ 장바구니 추가 후 후보 화면 초기화 (전체 메뉴로 복귀)
-        setTimeout(() => {
-          console.log('[Store] ✅ 후보 화면 초기화 → 전체 메뉴 복귀');
-          set({ candidates: [], recommendationResults: {} }); // 추천 결과도 초기화
-        }, 200);
-      }
-    }, 100);
+      // ✅ 후보 화면 초기화
+      set({ candidates: [], recommendationResults: {} }); // 추천 결과도 초기화
+    }
+    
+    console.log('[Store] ═══════════════════════════════');
   },
 
   // 옵션 선택 (개별) - 팝업용
   onOptionSelected: (option) => {
-    const { selectedOptions, pendingOptions } = get();
+    const { selectedOptions, pendingOptions, currentProduct } = get();
     
     console.log('[Store] ──────────────────────────────');
     console.log('[Store] 🎯 옵션 선택:', option.name);
@@ -223,6 +223,9 @@ export const useKioskStore = create((set, get) => ({
     
     const newSelectedOptions = [...selectedOptions, option];
     const newPendingOptions = pendingOptions.slice(1);
+    
+    // ✅ 전체 옵션 개수 계산
+    const totalOptionGroups = currentProduct?.optionGroups?.length || 0;
     
     set({
       selectedOptions: newSelectedOptions,
@@ -241,25 +244,22 @@ export const useKioskStore = create((set, get) => ({
       dispatch('OPTION_SELECTED', {
         option,
         remainingOptions: [],
+        totalOptionGroups, // ✅ 전체 옵션 개수 전달
       });
       
-      // 그 다음 장바구니 추가
-      setTimeout(() => {
-        get().addToCart();
-        console.log('[Store] ✅ 장바구니 추가 완료 → ASK_MORE 상태');
-        
-        // ✅ 장바구니 추가 후 후보 화면 초기화 (전체 메뉴로 복귀)
-        setTimeout(() => {
-          console.log('[Store] ✅ 후보 화면 초기화 → 전체 메뉴 복귀');
-          set({ candidates: [], recommendationResults: {} }); // 추천 결과도 초기화
-        }, 200);
-      }, 100);
+      // ✅ setTimeout 제거 - 동기적으로 처리
+      get().addToCart();
+      console.log('[Store] ✅ 장바구니 추가 완료 → ASK_MORE 상태');
+      
+      // ✅ 후보 화면 초기화
+      set({ candidates: [], recommendationResults: {} }); // 추천 결과도 초기화
     } else {
       // 아직 남은 옵션이 있음
       console.log('[Store] ⏭️ 다음 옵션 그룹:', newPendingOptions[0].name);
       dispatch('OPTION_SELECTED', {
         option,
         remainingOptions: newPendingOptions,
+        totalOptionGroups, // ✅ 전체 옵션 개수 전달
       });
     }
     console.log('[Store] ──────────────────────────────');
@@ -282,16 +282,11 @@ export const useKioskStore = create((set, get) => ({
       remainingOptions: [],
     });
     
-    // 장바구니에 추가
-    setTimeout(() => {
-      get().addToCart();
-      
-      // ✅ 장바구니 추가 후 후보 화면 초기화 (전체 메뉴로 복귀)
-      setTimeout(() => {
-        console.log('[Store] ✅ 후보 화면 초기화 → 전체 메뉴 복귀');
-        set({ candidates: [], recommendationResults: {} }); // 추천 결과도 초기화
-      }, 200);
-    }, 100);
+    // ✅ setTimeout 제거 - 동기적으로 처리
+    get().addToCart();
+    
+    // ✅ 후보 화면 초기화
+    set({ candidates: [], recommendationResults: {} }); // 추천 결과도 초기화
   },
 
   // 장바구니에 추가
@@ -302,7 +297,30 @@ export const useKioskStore = create((set, get) => ({
     console.log('[Store] 🛒 장바구니에 추가 시작...');
     
     if (!currentProduct) {
-      console.error('[Store] ❌ currentProduct가 없음!');
+      console.warn('[Store] ⚠️ currentProduct가 없음! (이미 처리됨 or 중복 호출)');
+      console.log('[Store] ═══════════════════════════════');
+      return;
+    }
+    
+    // ✅ 중복 방지: 같은 상품+옵션이 이미 장바구니에 있는지 확인 (타임스탬프 기반)
+    const now = Date.now();
+    
+    // 옵션을 정렬된 ID 배열로 변환 (비교용)
+    const currentOptionIds = selectedOptions.map(opt => opt.id).sort().join(',');
+    
+    const recentlySameItem = cart.find(item => {
+      if (item.product.id !== currentProduct.id) return false;
+      if ((now - item.id) > 2000) return false; // ✅ 2초로 증가
+      
+      // 옵션도 비교
+      const itemOptionIds = item.selectedOptions.map(opt => opt.id).sort().join(',');
+      return itemOptionIds === currentOptionIds;
+    });
+    
+    if (recentlySameItem) {
+      console.warn('[Store] ⚠️⚠️⚠️ 중복 추가 방지! 2초 이내 같은 상품+옵션이 이미 추가됨');
+      console.warn('[Store] 상품:', currentProduct.name);
+      console.warn('[Store] 옵션:', currentOptionIds);
       console.log('[Store] ═══════════════════════════════');
       return;
     }
@@ -312,7 +330,7 @@ export const useKioskStore = create((set, get) => ({
     const totalPrice = currentProduct.price + optionPrice;
     
     const cartItem = {
-      id: Date.now(),
+      id: now, // ✅ 타임스탬프 재사용
       product: currentProduct,
       selectedOptions: [...selectedOptions],
       totalPrice,
@@ -328,7 +346,7 @@ export const useKioskStore = create((set, get) => ({
     
     set({
       cart: [...cart, cartItem],
-      currentProduct: null,
+      currentProduct: null, // ✅ 중요: 추가 후 즉시 null로 설정하여 중복 방지
       selectedOptions: [],
       pendingOptions: [],
     });

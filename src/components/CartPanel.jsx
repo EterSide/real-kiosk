@@ -2,6 +2,7 @@
 
 import { useKioskStore } from '@/store/kioskStore';
 import { t, getProductName } from '@/lib/translations';
+import { useState, useEffect, useRef } from 'react';
 
 /**
  * 장바구니 패널 컴포넌트
@@ -11,21 +12,52 @@ export function CartPanel({ cart, onCheckout }) {
   const { language, removeFromCart } = useKioskStore();
   const totalPrice = cart.reduce((sum, item) => sum + item.totalPrice, 0);
   const totalCount = cart.length;
+  
+  const [cartBounce, setCartBounce] = useState(false);
+  const [newItemIds, setNewItemIds] = useState(new Set());
+  const prevCountRef = useRef(totalCount);
 
   // 장바구니 아이템 삭제 핸들러
   const handleRemoveItem = (itemId) => {
     removeFromCart(itemId);
   };
+  
+  // 장바구니에 아이템이 추가되었을 때 애니메이션 트리거
+  useEffect(() => {
+    if (totalCount > prevCountRef.current) {
+      // 아이템이 추가됨
+      setCartBounce(true);
+      
+      // 새로 추가된 아이템 ID 추적
+      const newIds = new Set(newItemIds);
+      cart.slice(prevCountRef.current).forEach(item => {
+        newIds.add(item.id);
+      });
+      setNewItemIds(newIds);
+      
+      // 1초 후 하이라이트 제거
+      setTimeout(() => {
+        setNewItemIds(new Set());
+      }, 1000);
+      
+      // bounce 애니메이션 종료
+      setTimeout(() => setCartBounce(false), 500);
+    }
+    prevCountRef.current = totalCount;
+  }, [totalCount, cart]);
 
   return (
     <div className="h-full bg-white border-l-4 border-orange-500 flex flex-col">
       {/* 헤더 */}
       <div className="bg-orange-500 text-white px-4 py-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold flex items-center gap-2">
+          <h3 
+            data-cart-icon 
+            className={`text-xl font-bold flex items-center gap-2 transition-transform ${cartBounce ? 'animate-bounce-once' : ''}`}
+          >
             🛒 {t('cart', language)}
           </h3>
-          <span className="bg-white text-orange-500 px-3 py-1 rounded-full text-sm font-bold">
+          <span className={`bg-white text-orange-500 px-3 py-1 rounded-full text-sm font-bold transition-all ${cartBounce ? 'scale-125' : 'scale-100'}`}>
             {totalCount}{t('items', language)}
           </span>
         </div>
@@ -39,14 +71,18 @@ export function CartPanel({ cart, onCheckout }) {
             <p className="text-sm">{t('cartEmpty', language)}</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {cart.map((item, index) => (
               <div
                 key={item.id}
-                className="bg-gray-50 rounded-xl p-3 border-2 border-gray-200 hover:border-orange-300 transition-colors"
+                className={`bg-gray-50 rounded-xl p-2.5 border-2 transition-all ${
+                  newItemIds.has(item.id)
+                    ? 'border-orange-500 bg-orange-50 animate-slide-in-from-top shadow-lg'
+                    : 'border-gray-200 hover:border-orange-300'
+                }`}
               >
                 {/* 상품 번호 */}
-                <div className="flex items-start justify-between mb-2">
+                <div className="flex items-start justify-between mb-1.5">
                   <span className="bg-orange-500 text-white text-xs font-bold px-2 py-1 rounded-full">
                     {index + 1}
                   </span>
@@ -60,7 +96,7 @@ export function CartPanel({ cart, onCheckout }) {
                 </div>
 
                 {/* 상품 이름 */}
-                <div className="mb-2">
+                <div className="mb-1.5">
                   <h4 className="font-bold text-gray-800 text-sm line-clamp-2">
                     {getProductName(item.product, language)}
                   </h4>
@@ -68,7 +104,7 @@ export function CartPanel({ cart, onCheckout }) {
 
                 {/* 선택한 옵션 */}
                 {item.selectedOptions && item.selectedOptions.length > 0 && (
-                  <div className="mb-2 space-y-1">
+                  <div className="mb-1.5 space-y-0.5">
                     {item.selectedOptions.map((opt, optIdx) => (
                       <div
                         key={optIdx}
@@ -87,7 +123,7 @@ export function CartPanel({ cart, onCheckout }) {
                 )}
 
                 {/* 가격 */}
-                <div className="pt-2 border-t border-gray-200">
+                <div className="pt-1.5 border-t border-gray-200">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-500">{t('amount', language)}</span>
                     <span className="text-base font-bold text-orange-600">

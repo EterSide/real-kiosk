@@ -44,7 +44,7 @@ export function MenuBoard({
   return (
     <div className="h-full bg-white flex flex-col">
       {/* 헤더 (축소) */}
-      <div className="bg-orange-500 text-white px-4 py-2">
+      <div className="bg-orange-500 text-white px-4 py-3">
         <h2 className="text-xl font-bold">
           {isOptionMode
             ? `${t('optionSelection', language)}: ${pendingOptions[0].name}`
@@ -121,7 +121,7 @@ export function MenuBoard({
                   key={product.id}
                   product={product}
                   index={index}
-                  onClick={() => onProductSelect && onProductSelect(product)}
+                  onClick={(e) => onProductSelect && onProductSelect(product, e)}
                   highlighted={isRecommendationMode}
                   recommendationReason={recommendation?.recommendationReason}
                 />
