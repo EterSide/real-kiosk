@@ -1,12 +1,12 @@
 /**
  * Google Cloud Text-to-Speech API 서비스
  * 
- * API 키: AIzaSyBu8c1n7936DgOk0LiVZeeAOMNyRAAN7Y4
+ * API 키: 
  * 문서: https://cloud.google.com/text-to-speech/docs/reference/rest
  */
 
-const GOOGLE_API_KEY = 'AIzaSyBu8c1n7936DgOk0LiVZeeAOMNyRAAN7Y4';
-const TTS_API_URL = 'https://texttospeech.googleapis.com/v1/text:synthesize';
+const GOOGLE_API_KEY = '';
+const TTS_API_URL = '';
 
 /**
  * Google Cloud TTS로 음성 합성
