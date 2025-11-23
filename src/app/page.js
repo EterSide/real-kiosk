@@ -12,7 +12,7 @@ import { TTSTestButton } from '@/components/TTSTestButton';
 import { PaymentModal } from '@/components/PaymentModal';
 import { RecommendationLoadingModal } from '@/components/RecommendationLoadingModal';
 import { KioskState } from '@/lib/stateMachine';
-import { matchMenu, matchOption, detectConfirmation, detectMoreOrder, detectRecommendation } from '@/services/menuMatcher';
+import { matchMenu, matchOption, detectConfirmation, detectMoreOrder, detectRecommendation, detectRemoveFromCart, matchCategory } from '@/services/menuMatcher';
 import { getAvailableProducts, getCategories } from '@/services/api';
 import { getMenuRecommendations, mapRecommendationsToProducts } from '@/services/menuRecommendationApi';
 
@@ -44,6 +44,8 @@ export default function KioskPage() {
     onMoreOrder,
     onConfirm,
     onPaymentCompleted,
+    removeFromCart,
+    setSelectedCategory,
     reset,
   } = useKioskStore();
 
@@ -164,6 +166,60 @@ export default function KioskPage() {
     try {
       // 상태별 처리
       if (state === KioskState.LISTENING || state === KioskState.PROCESSING) {
+        // 🎯 카테고리명 매칭 (카테고리 이동)
+        if (categories && categories.length > 0) {
+          const matchedCategory = matchCategory(transcript, categories, language);
+          if (matchedCategory) {
+            console.log('[Page] ═══════════════════════════════════════');
+            console.log('[Page] 📂 카테고리 매칭 성공!');
+            console.log('[Page] 📢 사용자 입력:', transcript);
+            console.log('[Page] 🎯 선택된 카테고리:', matchedCategory.name, '(ID:', matchedCategory.id, ')');
+            
+            setSelectedCategory(matchedCategory.id);
+            onSpeechReceived(transcript);
+            
+            // 카테고리 이동 완료 메시지 (선택사항)
+            console.log('[Page] ✅ 카테고리 이동 완료');
+            return;
+          }
+        }
+        
+        // 🎯 장바구니 제거 의도 감지 (최우선 - 장바구니에 아이템이 있을 때만)
+        if (cart.length > 0) {
+          const isRemove = detectRemoveFromCart(transcript, language);
+          if (isRemove) {
+            console.log('[Page] ═══════════════════════════════════════');
+            console.log('[Page] 🗑️ 장바구니 제거 의도 감지!');
+            console.log('[Page] 📢 사용자 입력:', transcript);
+            
+            // 메뉴 이름 추출 (예: "와퍼 빼줘" → "와퍼")
+            const result = matchMenu(transcript, products, language);
+            
+            if (result.candidates.length > 0) {
+              // 매칭된 메뉴를 장바구니에서 찾아서 제거
+              const matchedProduct = result.candidates[0].product;
+              const cartItemToRemove = cart.find(item => item.product.id === matchedProduct.id);
+              
+              if (cartItemToRemove) {
+                console.log('[Page] ✅ 장바구니에서 제거:', matchedProduct.name);
+                removeFromCart(cartItemToRemove.id);
+                onSpeechReceived(transcript);
+                // 제거 완료 후 LISTENING 상태로 유지
+                return;
+              } else {
+                console.log('[Page] ⚠️ 장바구니에 해당 메뉴가 없습니다');
+                onSpeechReceived(transcript);
+                // 상태 머신에서 "장바구니에 없습니다" 메시지 표시
+                return;
+              }
+            } else {
+              console.log('[Page] ⚠️ 메뉴 매칭 실패 - 제거할 메뉴를 찾을 수 없습니다');
+              onSpeechReceived(transcript);
+              return;
+            }
+          }
+        }
+        
         // 🎯 추천 의도 감지 (우선 순위)
         console.log('[Page] ──────────────────────────────────────');
         console.log('[Page] 🔍 추천 의도 감지 체크...');
@@ -188,6 +244,15 @@ export default function KioskPage() {
           
           console.log('[Page] ✅ AI 추천 API 응답 받음!');
           console.log('[Page] 추천 개수:', recommendationData.recommendations?.length || 0);
+          console.log('[Page] 메시지:', recommendationData.notes || '없음');
+          
+          // ✅ 추천 결과가 없고 notes가 있는 경우 (요청과 맞지 않는 경우)
+          if ((!recommendationData.recommendations || recommendationData.recommendations.length === 0) && recommendationData.notes) {
+            console.log('[Page] ⚠️ 추천 결과 없음 - notes 메시지 표시');
+            // 빈 배열을 전달하면 stateMachine에서 menuNotFound 메시지를 표시함
+            onMenuMatched([]);
+            return;
+          }
           
           // API 응답을 제품과 매핑
           const mappedResults = mapRecommendationsToProducts(recommendationData, products);
@@ -225,7 +290,7 @@ export default function KioskPage() {
         return; // 추천 처리 완료, 이후 로직 스킵
       }
       
-      // 일반 메뉴 매칭
+      // 일반 메뉴 매칭 먼저 시도
       console.log('[Page] ──────────────────────────────────────');
       console.log('[Page] 📍 LISTENING/PROCESSING 상태: 메뉴 매칭');
       console.log('[Page] 🔍 전체 상품에서 검색 중... (총', products.length, '개)');
@@ -237,6 +302,68 @@ export default function KioskPage() {
         result.candidates.slice(0, 5).forEach((c, i) => {
           console.log(`[Page]   ${i + 1}. ${c.product.name} (점수: ${c.score.toFixed(1)})`);
         });
+      }
+      
+      // ✅ 스마트 폴백: 일반 매칭 결과가 없거나 애매하면 LLM 추천으로 폴백
+      const shouldUseLLMRecommendation = 
+        result.candidates.length === 0 || // 매칭 결과 없음
+        (result.candidates.length > 0 && result.candidates[0].score < 60); // 최고 점수가 낮음 (애매한 매칭)
+      
+      if (shouldUseLLMRecommendation) {
+        console.log('[Page] ═══════════════════════════════════════');
+        console.log('[Page] 🔄 일반 매칭 실패/애매 → LLM 추천으로 폴백');
+        console.log('[Page] 매칭 점수:', result.candidates.length > 0 ? result.candidates[0].score.toFixed(1) : '없음');
+        console.log('[Page] ═══════════════════════════════════════');
+        
+        // LLM 추천으로 폴백
+        try {
+          // 로딩 모달 표시
+          setIsRecommendationLoading(true);
+          console.log('[Page] 🔄 AI 추천 로딩 모달 표시');
+          
+          console.log('[Page] 🔄 AI 추천 API 호출 중...');
+          const recommendationData = await getMenuRecommendations(transcript, 3);
+          
+          console.log('[Page] ✅ AI 추천 API 응답 받음!');
+          console.log('[Page] 추천 개수:', recommendationData.recommendations?.length || 0);
+          console.log('[Page] 메시지:', recommendationData.notes || '없음');
+          
+          // ✅ 추천 결과가 없고 notes가 있는 경우 (요청과 맞지 않는 경우)
+          if ((!recommendationData.recommendations || recommendationData.recommendations.length === 0) && recommendationData.notes) {
+            console.log('[Page] ⚠️ 추천 결과 없음 - notes 메시지 표시');
+            onMenuMatched([]);
+            return;
+          }
+          
+          // API 응답을 제품과 매핑
+          const mappedResults = mapRecommendationsToProducts(recommendationData, products);
+          
+          console.log('[Page] ✅ 제품 매핑 완료:', mappedResults.length, '개');
+          
+          if (mappedResults.length > 0) {
+            // 추천 결과 저장
+            setRecommendationResults(mappedResults);
+            
+            // 후보로 설정 (기존 플로우 재활용)
+            console.log('[Page] 🎯 추천 결과를 후보로 설정');
+            onMenuMatched(mappedResults);
+          } else {
+            console.log('[Page] ⚠️ 매핑된 제품이 없습니다');
+            onMenuMatched([]);
+          }
+        } catch (error) {
+          console.error('[Page] ❌ AI 추천 API 에러:', error);
+          console.error('[Page] 에러 메시지:', error.message);
+          
+          // 에러 시 원래 일반 매칭 결과 사용
+          console.log('[Page] 💡 AI 추천 실패 - 일반 매칭 결과 사용');
+          onMenuMatched(result.candidates);
+        } finally {
+          // 로딩 모달 닫기
+          setIsRecommendationLoading(false);
+          console.log('[Page] ✅ AI 추천 로딩 모달 닫기');
+        }
+        return; // LLM 추천 처리 완료
       }
       
       // ✅ 숫자가 포함된 경우 자동 선택 (예: "1번 와퍼세트")

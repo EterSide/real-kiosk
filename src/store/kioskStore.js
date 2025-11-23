@@ -9,6 +9,15 @@ export const useKioskStore = create((set, get) => ({
   
   // 고객 정보 (나이/성별)
   customerInfo: null,
+  
+  // 선택된 카테고리 (메뉴판 필터링용)
+  selectedCategory: null,
+  
+  // 카테고리 선택
+  setSelectedCategory: (categoryId) => {
+    set({ selectedCategory: categoryId });
+    console.log('[Store] 카테고리 선택:', categoryId);
+  },
 
   // 상태 전환
   dispatch: (action, payload = {}) => {

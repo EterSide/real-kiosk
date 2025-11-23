@@ -68,6 +68,24 @@ const COMMON_EXCLUDE_WORDS = [
   '세트',
   '단품',
   '메뉴',
+  // ✅ 무의미한 단어 추가 (동떨어진 말 필터링 강화)
+  '좋아요',
+  '주세요',
+  '주문',
+  '해줘',
+  '해주세요',
+  '하고',
+  '싶어',
+  '싶어요',
+  '먹고',
+  '먹을',
+  '오늘',
+  '날씨',
+  '좋네요',
+  '좋아',
+  '네',
+  '예',
+  '응',
 ];
 
 /**
@@ -242,22 +260,38 @@ export function matchMenu(userInput, products, language = 'ko') {
       score += 50;
     }
 
+    // ✅ 완전 일치 여부 확인 (이게 없으면 점수 가중치 감소)
+    const hasExactMatch = (text.includes(productName) || productName.includes(text)) ||
+                         (cleanedInput && cleanedProductName && 
+                          (cleanedInput.includes(cleanedProductName) || cleanedProductName.includes(cleanedInput)));
+
     // 3. 유사도 매칭 (정제된 텍스트 사용)
     if (cleanedInput && cleanedProductName) {
       const cleanedSimilarity = calculateSimilarity(cleanedInput, cleanedProductName);
-      score += cleanedSimilarity * 40; // 가중치 증가
+      // ✅ 유사도가 0.3 미만이면 점수 부여 안 함 (너무 낮은 유사도 제외)
+      if (cleanedSimilarity >= 0.3) {
+        // ✅ 완전 일치가 없으면 유사도 점수 가중치 감소
+        const similarityWeight = hasExactMatch ? 40 : 20;
+        score += cleanedSimilarity * similarityWeight;
+      }
     }
     
-    // 3-2. 유사도 매칭 (원본 텍스트)
-    const similarity = calculateSimilarity(text, productName);
-    score += similarity * 20; // 보조 점수
+    // 3-2. 유사도 매칭 (원본 텍스트) - 완전 일치가 있을 때만 보조 점수로 사용
+    if (hasExactMatch) {
+      const similarity = calculateSimilarity(text, productName);
+      if (similarity >= 0.3) {
+        score += similarity * 20; // 보조 점수
+      }
+    }
 
-    // 4. 부분 단어 매칭 (정제된 텍스트)
-    const cleanedWords = cleanedInput.split(/\s+/).filter(w => w.length >= 2);
-    for (const word of cleanedWords) {
-      if (cleanedProductName.includes(word)) {
-        score += 25;
-        console.log('[MenuMatcher] 단어 매칭:', word, 'in', cleanedProductName);
+    // 4. 부분 단어 매칭 (정제된 텍스트) - 완전 일치가 있을 때만
+    if (hasExactMatch && cleanedInput && cleanedProductName) {
+      const cleanedWords = cleanedInput.split(/\s+/).filter(w => w.length >= 2);
+      for (const word of cleanedWords) {
+        if (cleanedProductName.includes(word)) {
+          score += 25;
+          console.log('[MenuMatcher] 단어 매칭:', word, 'in', cleanedProductName);
+        }
       }
     }
 
@@ -271,13 +305,15 @@ export function matchMenu(userInput, products, language = 'ko') {
       score += 30;
     }
 
-    // 점수가 있는 경우만 후보에 추가
-    if (score > 10) {
+    // ✅ 최소 점수 임계값 상향: 10 → 40 (동떨어진 말 필터링)
+    if (score > 40) {
       candidates.push({
         product,
         score,
-        similarity,
+        similarity: hasExactMatch ? calculateSimilarity(text, productName) : 0,
       });
+    } else {
+      console.log('[MenuMatcher] ❌ 점수 부족으로 제외:', product.name, `(점수: ${score.toFixed(1)})`);
     }
   }
 
@@ -286,6 +322,15 @@ export function matchMenu(userInput, products, language = 'ko') {
 
   console.log('[MenuMatcher] 매칭 결과:', candidates.length, '개', 
     candidates.slice(0, 3).map(c => ({ name: c.product.name, score: c.score })));
+
+  // ✅ 최종 필터링: 상위 후보 점수가 50 미만이면 빈 배열 반환 (동떨어진 말 필터링)
+  if (candidates.length > 0 && candidates[0].score < 50) {
+    console.log('[MenuMatcher] ⚠️ 최고 점수가 50 미만 → 매칭 실패로 처리:', candidates[0].score.toFixed(1));
+    return {
+      candidates: [],
+      keywords,
+    };
+  }
 
   // ✅ 스마트 필터링: 정확한 매칭이면 1개만, 애매하면 최대 2개까지
   let filteredCandidates = candidates;
@@ -717,11 +762,86 @@ export function detectRecommendation(userInput, language = 'ko') {
   return false;
 }
 
+/**
+ * 카테고리명 매칭
+ */
+export function matchCategory(userInput, categories, language = 'ko') {
+  const text = userInput.trim().toLowerCase();
+  
+  console.log('[MenuMatcher] 카테고리 매칭:', text, '언어:', language);
+  console.log('[MenuMatcher] 카테고리 목록:', categories.map(c => ({ id: c.id, name: c.name, engName: c.categoryEngName || c.engName })));
+  
+  if (!categories || categories.length === 0) {
+    console.log('[MenuMatcher] ⚠️ 카테고리 목록이 비어있습니다');
+    return null;
+  }
+  
+  // 각 카테고리와 매칭 시도
+  for (const category of categories) {
+    const categoryName = (language === 'en' && (category.categoryEngName || category.engName)) 
+      ? (category.categoryEngName || category.engName).toLowerCase()
+      : category.name.toLowerCase();
+    
+    // 카테고리명 직접 매칭
+    if (text.includes(categoryName) || categoryName.includes(text)) {
+      console.log('[MenuMatcher] ✅ 카테고리 매칭 성공:', category.name, '(ID:', category.id, ')');
+      return category;
+    }
+    
+    // 카테고리명 키워드 매칭 (예: "햄버거" → "버거"도 매칭)
+    const categoryKeywords = {
+      '햄버거': ['버거', '햄버거', 'burger', 'burgers'],
+      '사이드': ['사이드', 'side', 'sides'],
+      '음료/디저트': ['음료', '디저트', '음료디저트', 'drink', 'dessert', 'drinks', 'desserts'],
+      '신메뉴': ['신메뉴', '신 메뉴', 'new', 'new menu'],
+    };
+    
+    const categoryNameKey = category.name;
+    if (categoryKeywords[categoryNameKey]) {
+      for (const keyword of categoryKeywords[categoryNameKey]) {
+        if (text.includes(keyword)) {
+          console.log('[MenuMatcher] ✅ 카테고리 키워드 매칭 성공:', category.name, '(키워드:', keyword, ', ID:', category.id, ')');
+          return category;
+        }
+      }
+    }
+  }
+  
+  console.log('[MenuMatcher] ℹ️ 카테고리 매칭 실패');
+  return null;
+}
+
+/**
+ * 장바구니에서 제거 의도 감지
+ */
+export function detectRemoveFromCart(userInput, language = 'ko') {
+  const text = userInput.trim().toLowerCase();
+  
+  console.log('[MenuMatcher] 장바구니 제거 의도 감지:', text, '언어:', language);
+  
+  // 제거 키워드
+  const removeKeywords = language === 'en'
+    ? ['remove', 'delete', 'cancel', 'take out', 'get rid of', '빼', '빼줘', '빼주세요', '제거', '삭제', '취소']
+    : ['빼', '빼줘', '빼주세요', '빼줄래', '제거', '제거해', '제거해줘', '삭제', '삭제해', '삭제해줘', '취소', '취소해', '취소해줘', '없애', '없애줘'];
+
+  for (const keyword of removeKeywords) {
+    if (text.includes(keyword)) {
+      console.log('[MenuMatcher] ✅ 제거 의도 감지 (키워드:', keyword, ')');
+      return true;
+    }
+  }
+
+  console.log('[MenuMatcher] ℹ️ 제거 의도 없음');
+  return false;
+}
+
 export default {
   matchMenu,
   matchOption,
   detectConfirmation,
   detectMoreOrder,
   detectRecommendation,
+  detectRemoveFromCart,
+  matchCategory,
 };
 

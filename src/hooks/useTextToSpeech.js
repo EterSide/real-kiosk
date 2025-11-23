@@ -111,8 +111,8 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
         console.log('[TTS] ✅ Google TTS 종료');
         currentAudioRef.current = null;
         
-        // ✅ 1500ms 지연 후 음성 인식 다시 활성화 (TTS 에코 방지)
-        console.log('[TTS] ⏳ 1500ms 후 음성 인식 다시 활성화 예약...');
+        // ✅ 2500ms 지연 후 음성 인식 다시 활성화 (TTS 에코 방지 강화)
+        console.log('[TTS] ⏳ 2500ms 후 음성 인식 다시 활성화 예약...');
         if (endDelayTimerRef.current) {
           clearTimeout(endDelayTimerRef.current);
         }
@@ -123,7 +123,7 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
             onSpeechEnd();
           }
           endDelayTimerRef.current = null;
-        }, 1500); // ✅ 1500ms 버퍼 (TTS 잔향 완전 제거)
+        }, 2500); // ✅ 2500ms 버퍼 (TTS 잔향 완전 제거)
       },
       onError: (error) => {
         console.error('[TTS] ❌ Google TTS 에러:', error);
@@ -233,8 +233,8 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
     utterance.onend = () => {
       console.log('[TTS] ✅ Web Speech API 종료');
       
-      // ✅ 1500ms 지연 후 음성 인식 다시 활성화 (TTS 에코 방지)
-      console.log('[TTS] ⏳ 1500ms 후 음성 인식 다시 활성화 예약...');
+      // ✅ 2500ms 지연 후 음성 인식 다시 활성화 (TTS 에코 방지 강화)
+      console.log('[TTS] ⏳ 2500ms 후 음성 인식 다시 활성화 예약...');
       if (endDelayTimerRef.current) {
         clearTimeout(endDelayTimerRef.current);
       }
@@ -245,7 +245,7 @@ export function useTextToSpeech(onSpeechEnd, customerInfo = null) {
           onSpeechEnd();
         }
         endDelayTimerRef.current = null;
-      }, 1500); // ✅ 1500ms 버퍼 (TTS 잔향 완전 제거)
+      }, 2500); // ✅ 2500ms 버퍼 (TTS 잔향 완전 제거)
     };
 
     utterance.onerror = (event) => {

@@ -62,7 +62,7 @@ export const translations = {
     
     // StateMachine Messages (구어체로 자연스럽게)
     welcome: '어서오세요! 주문 도와드릴게요',
-    howCanIHelp: '어떤 메뉴 드릴까요?',
+    howCanIHelp: '어떤 메뉴 드릴까요? 메뉴 이름을 말씀하시거나, 원하시는 맛이나 특징을 말씀해 주세요!',
     menuNotFound: '아, 못 찾았어요. 다시 한 번 말씀해 주시겠어요?',
     menuNotFoundAskMore: '음, 못 찾았네요. 다른 메뉴 더 주문하실 거 있으세요?',
     selected: '네! 선택하셨어요.',

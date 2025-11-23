@@ -15,8 +15,7 @@ export function MenuBoard({
   pendingOptions,
   onProductSelect,
 }) {
-  const { language, recommendationResults } = useKioskStore();
-  const [selectedCategory, setSelectedCategory] = useState(null);
+  const { language, recommendationResults, selectedCategory, setSelectedCategory } = useKioskStore();
 
   console.log('[MenuBoard] 렌더링:', {
     productsCount: products?.length || 0,
